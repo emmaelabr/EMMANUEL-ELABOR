@@ -4,29 +4,30 @@ import Sidebar from './components/Sidebar';
 import ChatInterface from './components/ChatInterface';
 import LabScene from './components/LabScene';
 import DataVisualizer from './components/DataVisualizer';
+import WelcomeScreen from './components/WelcomeScreen';
 import { ExperimentState, ChatMessage, GroundingSource } from './types';
 import { getExperimentLogic, chatWithLabAssistant } from './services/geminiService';
-import { FlaskConical, Search } from 'lucide-react';
+import { ArrowLeft, Loader2 } from 'lucide-react';
+
+type ViewState = 'welcome' | 'loading' | 'lab';
 
 const App: React.FC = () => {
+  const [view, setView] = useState<ViewState>('welcome');
   const [experiment, setExperiment] = useState<ExperimentState | null>(null);
-  const [messages, setMessages] = useState<ChatMessage[]>([
-    { role: 'model', text: 'Welcome to Revolt Lab! I am your AI research assistant. Describe an experiment you\'d like to conduct, or ask me about physics and chemistry concepts.' }
-  ]);
+  const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [sources, setSources] = useState<GroundingSource[]>([]);
   const [isTyping, setIsTyping] = useState(false);
-  const [promptValue, setPromptValue] = useState('');
 
-  const handleStartExperiment = async (text: string) => {
-    setIsTyping(true);
-    setMessages(prev => [...prev, { role: 'user', text }]);
+  const startExperiment = async (prompt: string) => {
+    setView('loading');
+    setMessages([{ role: 'user', text: prompt }]);
     
     try {
-      const result = await getExperimentLogic(text);
+      const result = await getExperimentLogic(prompt);
       
       const newExp: ExperimentState = {
         id: Date.now().toString(),
-        name: result.setup.name || 'Custom Experiment',
+        name: result.setup.name || 'New Experiment',
         type: result.setup.type as 'physics' | 'chemistry' || 'physics',
         description: result.description,
         parameters: result.setup.parameters || {},
@@ -37,15 +38,15 @@ const App: React.FC = () => {
 
       setExperiment(newExp);
       setSources(result.sources || []);
-      setMessages(prev => [...prev, { 
-        role: 'model', 
-        text: `Experiment initialized: ${newExp.name}. I've set up the apparatus. You can adjust parameters like ${Object.keys(newExp.parameters).join(', ')} in the control panel.` 
-      }]);
+      setMessages(prev => [
+        ...prev,
+        { role: 'model', text: `System online. I've prepared the ${newExp.name}. ${result.description}` }
+      ]);
+      setView('lab');
     } catch (error) {
       console.error(error);
-      setMessages(prev => [...prev, { role: 'model', text: 'Sorry, I had trouble setting up that experiment. Could you try rephrasing?' }]);
-    } finally {
-      setIsTyping(false);
+      setView('welcome');
+      alert("The lab encountered a calibration error. Please try a different prompt.");
     }
   };
 
@@ -54,16 +55,10 @@ const App: React.FC = () => {
     setIsTyping(true);
     
     try {
-      // Check if user is asking for a new experiment
-      if (text.toLowerCase().includes('simulate') || text.toLowerCase().includes('experiment') || text.toLowerCase().includes('start')) {
-        await handleStartExperiment(text);
-        return;
-      }
-
       const reply = await chatWithLabAssistant([], text);
       setMessages(prev => [...prev, { role: 'model', text: reply }]);
     } catch (error) {
-      setMessages(prev => [...prev, { role: 'model', text: 'I encountered an error while thinking. Please try again.' }]);
+      setMessages(prev => [...prev, { role: 'model', text: 'Calibration interrupted. Please repeat.' }]);
     } finally {
       setIsTyping(false);
     }
@@ -74,93 +69,86 @@ const App: React.FC = () => {
     setExperiment({
       ...experiment,
       parameters: { ...experiment.parameters, ...newParams },
-      dataPoints: [] // Reset data on param change
+      dataPoints: [] 
     });
   };
 
   const handleDataUpdate = useCallback((point: { x: number; y: number }) => {
     setExperiment(prev => {
       if (!prev) return null;
-      // Keep only last 100 points for performance
       const newData = [...prev.dataPoints, point].slice(-100);
       return { ...prev, dataPoints: newData };
     });
   }, []);
 
-  const resetLab = () => {
-    setExperiment(null);
-    setSources([]);
-    setPromptValue('');
-  };
-
   return (
-    <div className="flex h-screen w-full bg-[#0f172a] text-slate-200 overflow-hidden">
-      <Sidebar 
-        onNewExperiment={resetLab} 
-        onSelectSaved={(id) => handleStartExperiment(`Load experiment ${id}`)} 
-      />
-      
-      <main className="flex-1 flex flex-col relative">
-        {/* Top Header */}
-        {!experiment && (
-          <div className="absolute inset-0 flex flex-col items-center justify-center z-20 pointer-events-none p-4">
-            <div className="pointer-events-auto bg-[#1e293b]/80 backdrop-blur-xl p-8 rounded-3xl border border-slate-700 shadow-2xl max-w-2xl w-full text-center">
-              <FlaskConical className="text-blue-500 mx-auto mb-4" size={48} />
-              <h1 className="text-4xl font-bold text-white mb-2">Welcome to Revolt Lab</h1>
-              <p className="text-slate-400 mb-8">Your intelligent sandbox for physics and chemistry.</p>
-              
-              <div className="relative group">
-                <input
-                  type="text"
-                  value={promptValue}
-                  onChange={(e) => setPromptValue(e.target.value)}
-                  onKeyDown={(e) => e.key === 'Enter' && handleStartExperiment(promptValue)}
-                  placeholder="Enter an experiment (e.g., 'A titration curve of HCl and NaOH')"
-                  className="w-full bg-slate-800 border-2 border-slate-700 rounded-2xl py-4 pl-6 pr-14 text-white placeholder-slate-500 focus:outline-none focus:border-blue-500 transition-all shadow-lg"
-                />
-                <button 
-                  onClick={() => handleStartExperiment(promptValue)}
-                  className="absolute right-3 top-3 p-2 bg-blue-600 rounded-xl hover:bg-blue-500 transition-all group-hover:scale-105"
-                >
-                  <Search size={24} />
-                </button>
-              </div>
-              
-              <div className="mt-8 flex flex-wrap justify-center gap-3">
-                {['Double Pendulum', 'Titration pH', 'Free Fall', 'Projectile Motion'].map(tag => (
-                  <button 
-                    key={tag}
-                    onClick={() => handleStartExperiment(tag)}
-                    className="px-4 py-1.5 rounded-full bg-slate-700 hover:bg-slate-600 text-xs font-medium transition-colors"
-                  >
-                    {tag}
-                  </button>
-                ))}
-              </div>
-            </div>
-          </div>
-        )}
+    <div className="h-screen w-full bg-black text-slate-200 overflow-hidden font-sans selection:bg-blue-500/30">
+      {view === 'welcome' && (
+        <WelcomeScreen onStart={startExperiment} />
+      )}
 
-        <div className="flex flex-1 overflow-hidden">
-          {/* Chat Interface */}
-          <ChatInterface 
-            messages={messages} 
-            onSendMessage={handleChat} 
-            sources={sources}
-            isTyping={isTyping}
-          />
-          
-          {/* 3D Scene */}
-          <LabScene 
-            experiment={experiment} 
-            onUpdateParameters={handleUpdateParameters}
-            onDataUpdate={handleDataUpdate}
-          />
-          
-          {/* Right Data Plot */}
-          <DataVisualizer experiment={experiment} />
+      {view === 'loading' && (
+        <div className="h-screen w-full flex flex-col items-center justify-center bg-black animate-in fade-in duration-700">
+          <div className="relative">
+            <div className="absolute inset-0 rounded-full bg-blue-600 blur-3xl opacity-20 animate-pulse"></div>
+            <Loader2 className="animate-spin text-blue-500 relative" size={72} />
+          </div>
+          <h2 className="mt-10 text-sm font-bold tracking-[0.5em] text-white uppercase animate-pulse">Synchronising Realities</h2>
         </div>
-      </main>
+      )}
+
+      {view === 'lab' && (
+        <div className="flex h-screen w-full animate-in zoom-in-95 duration-500">
+          <Sidebar 
+            onNewExperiment={() => setView('welcome')} 
+            onSelectSaved={(id) => startExperiment(`Experiment ${id}`)} 
+          />
+          
+          <main className="flex-1 flex flex-col overflow-hidden">
+            {/* Header Control Bar */}
+            <header className="h-16 border-b border-white/10 bg-black backdrop-blur-md flex items-center justify-between px-8 z-30">
+              <div className="flex items-center gap-6">
+                <button 
+                  onClick={() => setView('welcome')}
+                  className="p-2.5 bg-white/5 hover:bg-white/10 rounded-xl transition-all text-slate-400 hover:text-white border border-white/5"
+                  title="Back to Hall"
+                >
+                  <ArrowLeft size={20} />
+                </button>
+                <div className="flex flex-col">
+                  <span className="text-[10px] font-black text-blue-500 uppercase tracking-widest leading-none mb-1">Active Research</span>
+                  <h2 className="text-sm font-bold tracking-tight text-white uppercase">
+                    {experiment?.name}
+                  </h2>
+                </div>
+              </div>
+              <div className="flex gap-4 items-center">
+                <div className="px-4 py-1.5 rounded-full bg-blue-500/10 border border-blue-500/20 text-[10px] font-bold text-blue-400 uppercase tracking-widest flex items-center gap-2">
+                  <span className="w-1.5 h-1.5 rounded-full bg-blue-500 animate-pulse"></span>
+                  Lab Online
+                </div>
+              </div>
+            </header>
+
+            <div className="flex flex-1 overflow-hidden bg-black">
+              <ChatInterface 
+                messages={messages} 
+                onSendMessage={handleChat} 
+                sources={sources}
+                isTyping={isTyping}
+              />
+              
+              <LabScene 
+                experiment={experiment} 
+                onUpdateParameters={handleUpdateParameters}
+                onDataUpdate={handleDataUpdate}
+              />
+              
+              <DataVisualizer experiment={experiment} />
+            </div>
+          </main>
+        </div>
+      )}
     </div>
   );
 };

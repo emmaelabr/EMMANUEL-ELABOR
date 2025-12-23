@@ -27,9 +27,9 @@ const LabScene: React.FC<LabSceneProps> = ({ experiment, onUpdateParameters, onD
   useEffect(() => {
     if (!containerRef.current) return;
 
-    // Scene Setup
+    // Scene Setup - Pure Black
     const scene = new THREE.Scene();
-    scene.background = new THREE.Color(0x1e293b);
+    scene.background = new THREE.Color(0x000000);
     sceneRef.current = scene;
 
     const camera = new THREE.PerspectiveCamera(75, containerRef.current.clientWidth / containerRef.current.clientHeight, 0.1, 1000);
@@ -47,16 +47,16 @@ const LabScene: React.FC<LabSceneProps> = ({ experiment, onUpdateParameters, onD
     controls.enableDamping = true;
 
     // Lighting
-    const ambientLight = new THREE.AmbientLight(0xffffff, 0.6);
+    const ambientLight = new THREE.AmbientLight(0xffffff, 0.4);
     scene.add(ambientLight);
 
-    const dirLight = new THREE.DirectionalLight(0xffffff, 1);
+    const dirLight = new THREE.DirectionalLight(0xffffff, 1.2);
     dirLight.position.set(5, 10, 5);
     dirLight.castShadow = true;
     scene.add(dirLight);
 
-    // Grid Floor
-    const grid = new THREE.GridHelper(20, 20, 0x475569, 0x334155);
+    // Subtle Grid Floor
+    const grid = new THREE.GridHelper(20, 20, 0x1e293b, 0x1e293b);
     scene.add(grid);
 
     // Apparatus Group
@@ -102,11 +102,11 @@ const LabScene: React.FC<LabSceneProps> = ({ experiment, onUpdateParameters, onD
     // Add Apparatus Based on Type
     if (experiment.type === 'physics') {
       if (experiment.name.toLowerCase().includes('pendulum')) {
-        const pivot = new THREE.Mesh(new THREE.SphereGeometry(0.2), new THREE.MeshStandardMaterial({ color: 0x64748b }));
+        const pivot = new THREE.Mesh(new THREE.SphereGeometry(0.2), new THREE.MeshStandardMaterial({ color: 0xffffff }));
         pivot.position.y = 8;
         apparatusGroupRef.current.add(pivot);
 
-        const bob = new THREE.Mesh(new THREE.SphereGeometry(0.5), new THREE.MeshStandardMaterial({ color: 0xef4444 }));
+        const bob = new THREE.Mesh(new THREE.SphereGeometry(0.5), new THREE.MeshStandardMaterial({ color: 0x3b82f6 }));
         bob.name = 'pendulum_bob';
         apparatusGroupRef.current.add(bob);
 
@@ -117,13 +117,13 @@ const LabScene: React.FC<LabSceneProps> = ({ experiment, onUpdateParameters, onD
         string.name = 'pendulum_string';
         apparatusGroupRef.current.add(string);
       } else if (experiment.name.toLowerCase().includes('projectile')) {
-        const launcher = new THREE.Mesh(new THREE.CylinderGeometry(0.3, 0.4, 2), new THREE.MeshStandardMaterial({ color: 0x3b82f6 }));
+        const launcher = new THREE.Mesh(new THREE.CylinderGeometry(0.3, 0.4, 2), new THREE.MeshStandardMaterial({ color: 0xffffff }));
         launcher.rotation.z = Math.PI / 4;
         launcher.position.set(-5, 1, 0);
         launcher.name = 'launcher';
         apparatusGroupRef.current.add(launcher);
 
-        const projectile = new THREE.Mesh(new THREE.SphereGeometry(0.2), new THREE.MeshStandardMaterial({ color: 0xf59e0b }));
+        const projectile = new THREE.Mesh(new THREE.SphereGeometry(0.2), new THREE.MeshStandardMaterial({ color: 0x3b82f6 }));
         projectile.name = 'projectile';
         projectile.position.set(-5, 1, 0);
         apparatusGroupRef.current.add(projectile);
@@ -132,7 +132,7 @@ const LabScene: React.FC<LabSceneProps> = ({ experiment, onUpdateParameters, onD
       const beaker = new THREE.Group();
       const glass = new THREE.Mesh(
         new THREE.CylinderGeometry(1.5, 1.5, 3, 32, 1, true),
-        new THREE.MeshPhysicalMaterial({ color: 0xffffff, transparent: true, opacity: 0.3, transmission: 0.9 })
+        new THREE.MeshPhysicalMaterial({ color: 0xffffff, transparent: true, opacity: 0.2, transmission: 0.9 })
       );
       beaker.add(glass);
 
@@ -143,7 +143,7 @@ const LabScene: React.FC<LabSceneProps> = ({ experiment, onUpdateParameters, onD
 
       const liquid = new THREE.Mesh(
         new THREE.CylinderGeometry(1.45, 1.45, 2, 32),
-        new THREE.MeshStandardMaterial({ color: 0x3b82f6, transparent: true, opacity: 0.7 })
+        new THREE.MeshStandardMaterial({ color: 0x3b82f6, transparent: true, opacity: 0.6 })
       );
       liquid.position.y = -0.5;
       liquid.name = 'liquid';
@@ -157,15 +157,13 @@ const LabScene: React.FC<LabSceneProps> = ({ experiment, onUpdateParameters, onD
   useEffect(() => {
     if (!isRunning || !experiment) return;
 
-    let startTime = Date.now();
     let currentT = 0;
 
     const update = () => {
       if (!isRunning) return;
-      currentT += 0.016; // Approx 60fps
+      currentT += 0.016; 
       setTime(currentT);
 
-      // Simulation Physics Logic
       if (experiment.name.toLowerCase().includes('pendulum')) {
         const L = experiment.parameters.length || 5;
         const g = experiment.parameters.gravity || 9.81;
@@ -220,7 +218,6 @@ const LabScene: React.FC<LabSceneProps> = ({ experiment, onUpdateParameters, onD
   const handleReset = () => {
     setIsRunning(false);
     setTime(0);
-    // Reset positions
     if (experiment?.name.toLowerCase().includes('projectile')) {
       const projectile = apparatusGroupRef.current?.getObjectByName('projectile');
       if (projectile) projectile.position.set(-5, 1, 0);
@@ -228,40 +225,40 @@ const LabScene: React.FC<LabSceneProps> = ({ experiment, onUpdateParameters, onD
   };
 
   return (
-    <div className="flex-1 relative bg-[#1e293b]" ref={containerRef}>
-      <div className="absolute top-4 left-1/2 -translate-x-1/2 bg-slate-900/80 backdrop-blur-md px-6 py-2 rounded-full border border-slate-700 flex items-center gap-6 z-10 shadow-xl">
+    <div className="flex-1 relative bg-black" ref={containerRef}>
+      <div className="absolute top-6 left-1/2 -translate-x-1/2 bg-black/80 backdrop-blur-xl px-8 py-3 rounded-2xl border border-white/10 flex items-center gap-8 z-10 shadow-2xl shadow-blue-500/5">
         <button 
           onClick={() => setIsRunning(!isRunning)}
-          className={`p-2 rounded-full transition-colors ${isRunning ? 'text-red-400 bg-red-900/20' : 'text-green-400 bg-green-900/20'}`}
+          className={`p-3 rounded-xl transition-all ${isRunning ? 'text-red-400 bg-red-500/10' : 'text-blue-400 bg-blue-500/10 hover:scale-105'}`}
         >
           {isRunning ? <Pause size={24} /> : <Play size={24} />}
         </button>
-        <button onClick={handleReset} className="p-2 rounded-full text-slate-300 hover:bg-slate-800 transition-colors">
+        <button onClick={handleReset} className="p-3 rounded-xl text-slate-400 hover:text-white hover:bg-white/5 transition-all">
           <RotateCcw size={24} />
         </button>
-        <div className="w-[1px] h-8 bg-slate-700 mx-2" />
-        <div className="text-sm font-mono text-slate-300">
-          Time: <span className="text-white font-bold">{time.toFixed(2)}s</span>
+        <div className="w-[1px] h-10 bg-white/10 mx-2" />
+        <div className="text-sm font-mono tracking-widest text-slate-500">
+          T: <span className="text-white font-bold">{time.toFixed(2)}s</span>
         </div>
         <button 
           onClick={() => setShowSettings(!showSettings)}
-          className={`p-2 rounded-full transition-colors ${showSettings ? 'text-blue-400 bg-blue-900/20' : 'text-slate-300 hover:bg-slate-800'}`}
+          className={`p-3 rounded-xl transition-all ${showSettings ? 'text-blue-400 bg-blue-500/20' : 'text-slate-400 hover:text-white'}`}
         >
           <Settings2 size={24} />
         </button>
       </div>
 
       {showSettings && experiment && (
-        <div className="absolute top-20 right-4 bg-slate-900/90 backdrop-blur-md p-4 rounded-xl border border-slate-700 w-64 z-10 shadow-2xl">
-          <h3 className="text-sm font-bold text-slate-200 mb-4 flex items-center gap-2">
-            <Settings2 size={16} /> Experiment Controls
+        <div className="absolute top-24 right-8 bg-black/90 backdrop-blur-2xl p-6 rounded-3xl border border-white/10 w-72 z-10 shadow-2xl animate-in fade-in slide-in-from-right-4">
+          <h3 className="text-[10px] font-black text-blue-500 mb-6 flex items-center gap-2 uppercase tracking-[0.3em]">
+            <Settings2 size={14} /> Control Panel
           </h3>
-          <div className="space-y-4">
+          <div className="space-y-6">
             {Object.entries(experiment.parameters).map(([key, value]) => (
               <div key={key}>
-                <div className="flex justify-between text-[10px] text-slate-400 uppercase tracking-widest font-bold mb-1">
+                <div className="flex justify-between text-[9px] text-slate-500 uppercase tracking-widest font-black mb-2">
                   <span>{key}</span>
-                  <span className="text-blue-400">{value}</span>
+                  <span className="text-white font-mono">{value}</span>
                 </div>
                 <input 
                   type="range" 
@@ -270,30 +267,15 @@ const LabScene: React.FC<LabSceneProps> = ({ experiment, onUpdateParameters, onD
                   step={0.1}
                   value={value}
                   onChange={(e) => onUpdateParameters({ [key]: parseFloat(e.target.value) })}
-                  className="w-full h-1 bg-slate-700 rounded-lg appearance-none cursor-pointer accent-blue-500"
+                  className="w-full h-1 bg-white/10 rounded-lg appearance-none cursor-pointer accent-blue-500"
                 />
               </div>
             ))}
           </div>
         </div>
       )}
-
-      {!experiment && (
-        <div className="absolute inset-0 flex flex-col items-center justify-center text-slate-500 bg-slate-900/40">
-          <FlaskConical size={64} className="mb-4 opacity-20" />
-          <p className="text-lg">Select or describe an experiment to begin</p>
-          <p className="text-sm opacity-60">Physics & Chemistry Lab Module Active</p>
-        </div>
-      )}
     </div>
   );
 };
-
-// Simple utility icon for the empty state
-const FlaskConical = ({ size, className }: { size: number, className?: string }) => (
-  <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className}>
-    <path d="M10 2v7.5" /><path d="M14 2v7.5" /><path d="M8.5 2h7" /><path d="M7 11a5 5 0 0 1 10 0c0 2.62 1.54 4.86 3.75 6a2 2 0 0 1 .25 3.5 2 2 0 0 1-2 0l-14-8" /><path d="M20 20H4" /><path d="M7 15h10" />
-  </svg>
-);
 
 export default LabScene;

@@ -2,7 +2,7 @@
 import { GoogleGenAI, Type, GenerateContentResponse } from "@google/genai";
 import { ExperimentState } from "../types";
 
-const ai = new GoogleGenAI({ apiKey: process.env.API_KEY || '' });
+const ai = new GoogleGenAI({ apiKey: process.env.API_KEY || 'AIzaSyDmN3Je260sagFmNWkt-6c-iqeNZRDgKUc' });
 
 export const getExperimentLogic = async (prompt: string): Promise<{ 
   description: string; 
@@ -68,7 +68,6 @@ export const chatWithLabAssistant = async (history: { role: string; parts: { tex
     },
   });
 
-  // Since we use the raw SDK, we send the message
   const result = await chat.sendMessage({ message });
   return result.text;
 };
