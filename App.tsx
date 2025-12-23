@@ -5,6 +5,7 @@ import ChatInterface from './components/ChatInterface';
 import LabScene from './components/LabScene';
 import WelcomeScreen from './components/WelcomeScreen';
 import NeutronStarLoading from './components/NeutronStarLoading';
+import GlobalParticles from './components/GlobalParticles';
 import { ExperimentState, ChatMessage, GroundingSource, ImageData } from './types';
 import { getExperimentLogic, chatWithLabAssistant } from './services/geminiService';
 import { ArrowLeft } from 'lucide-react';
@@ -56,7 +57,7 @@ const App: React.FC = () => {
         ...prev,
         { 
           role: 'model', 
-          text: `${result.description}\n\nRevolt core initialized. I've configured the ${newExp.name}. ${mode === 'split' ? 'Real-time visualization and neural monitoring active.' : 'I am standing by for deeper analysis.'}`,
+          text: `${result.description}\n\nRevolt core initialized. Analysis standing by.`,
           showGraph: prompt.toLowerCase().includes('graph') || prompt.toLowerCase().includes('plot')
         }
       ]);
@@ -68,11 +69,11 @@ const App: React.FC = () => {
     }
   };
 
-  const handleChat = async (text: string) => {
-    setMessages(prev => [...prev, { role: 'user', text }]);
+  const handleChat = async (text: string, image?: ImageData) => {
+    setMessages(prev => [...prev, { role: 'user', text: text || (image ? "[Image Attached]" : "") }]);
     setIsTyping(true);
     try {
-      const reply = await chatWithLabAssistant([], text);
+      const reply = await chatWithLabAssistant([], text, image);
       const showGraph = text.toLowerCase().includes('graph') || text.toLowerCase().includes('plot');
       setMessages(prev => [...prev, { role: 'model', text: reply, showGraph }]);
     } catch (error) {
@@ -100,7 +101,9 @@ const App: React.FC = () => {
   }, []);
 
   return (
-    <div className={`h-screen w-full transition-colors duration-500 overflow-hidden font-sans ${isLight ? 'bg-white text-slate-900' : 'bg-[#020617] text-slate-200'}`}>
+    <div className={`h-screen w-full transition-colors duration-700 overflow-hidden font-sans relative ${isLight ? 'bg-white text-slate-900' : 'bg-[#020617] text-slate-200'}`}>
+      <GlobalParticles theme={theme} />
+      
       {view === 'welcome' && (
         <WelcomeScreen onStart={startExperiment} theme={theme} onThemeToggle={toggleTheme} />
       )}
@@ -108,7 +111,7 @@ const App: React.FC = () => {
       {view === 'loading' && <NeutronStarLoading />}
 
       {view === 'lab' && (
-        <div className="flex h-screen w-full animate-in zoom-in-95 duration-700">
+        <div className="flex h-screen w-full animate-in zoom-in-95 duration-1000 relative z-10 backdrop-blur-[2px]">
           <Sidebar 
             isOpen={isSidebarOpen}
             onToggle={() => setIsSidebarOpen(!isSidebarOpen)}
@@ -118,54 +121,48 @@ const App: React.FC = () => {
           />
           
           <main className="flex-1 flex flex-col overflow-hidden">
-            <header className={`h-16 border-b flex items-center justify-between px-8 z-30 backdrop-blur-3xl transition-colors duration-500 ${isLight ? 'bg-white/80 border-slate-200 shadow-sm' : 'bg-slate-900/40 border-white/5'}`}>
+            <header className={`h-20 flex items-center justify-between px-10 z-30 transition-all duration-700 ${isLight ? 'bg-white/40 border-b border-black/5' : 'bg-transparent'}`}>
               <div className="flex items-center gap-6">
                 <button 
                   onClick={() => setView('welcome')}
-                  className={`p-2 rounded-lg transition-all ${isLight ? 'bg-black text-white hover:bg-slate-800' : 'bg-white/5 hover:bg-white/10 text-slate-400'}`}
+                  className={`p-3 rounded-2xl transition-all shadow-xl ${isLight ? 'bg-black text-white hover:bg-slate-800' : 'bg-white/5 hover:bg-white/10 text-slate-400'}`}
                 >
-                  <ArrowLeft size={18} />
+                  <ArrowLeft size={20} />
                 </button>
                 <div className="flex flex-col">
-                  <span className={`text-[9px] font-black uppercase tracking-widest leading-none mb-1 ${isLight ? 'text-black' : 'text-blue-500'}`}>Revolt Research Core</span>
-                  <h2 className={`text-xs font-bold tracking-tight uppercase ${isLight ? 'text-slate-900' : 'text-white'}`}>
-                    {experiment?.name}
+                  <span className={`text-[10px] font-black uppercase tracking-[0.3em] leading-none mb-2 ${isLight ? 'text-slate-400' : 'text-blue-500/60'}`}>Research Stream</span>
+                  <h2 className={`text-xl font-extralight tracking-tight ${isLight ? 'text-slate-900' : 'text-white'}`}>
+                    {experiment?.name.split(' ').map((word, i) => i === 0 ? <span key={i} className="font-bold italic mr-1">{word}</span> : word + ' ')}
                   </h2>
                 </div>
               </div>
 
-              <div className="flex items-center gap-6">
+              <div className="flex items-center gap-8">
                 <button 
                   onClick={() => setLayoutMode(layoutMode === 'split' ? 'chat-only' : 'split')}
-                  className={`px-4 py-1.5 rounded-xl border text-[9px] font-black transition-all uppercase tracking-widest ${isLight ? 'bg-black border-black text-white hover:bg-slate-800' : 'bg-white/5 border-white/10 text-slate-400 hover:text-white'}`}
+                  className={`px-6 py-2 rounded-2xl border text-[10px] font-black transition-all uppercase tracking-[0.2em] shadow-lg ${isLight ? 'bg-black border-black text-white hover:bg-slate-800' : 'bg-white/5 border-white/10 text-slate-400 hover:text-white'}`}
                 >
-                  {layoutMode === 'split' ? 'Full Report' : 'Split Feed'}
+                  {layoutMode === 'split' ? 'Deep View' : 'Split Feed'}
                 </button>
 
-                {/* Revolt Lab Branding Toggle Logo */}
                 <button 
                   onClick={toggleTheme}
-                  className="flex items-center gap-3 border-l pl-6 border-current/10 h-10 group"
+                  className="group flex items-center gap-4 py-2.5 px-6 rounded-full border border-current/10 bg-current/5 backdrop-blur-md transition-all hover:bg-current/10 hover:scale-105 active:scale-95 shadow-xl outline-none"
                 >
-                  <div className="flex items-center gap-3 py-1 px-4 rounded-full border border-current/5 bg-current/5 transition-all hover:bg-current/10">
-                    {!isLight && (
-                      <div className="w-2 h-2 rounded-full bg-blue-500 shadow-[0_0_8px_rgba(59,130,246,0.8)]" />
-                    )}
-                    <div className="flex flex-col items-start leading-none">
-                      <div className="flex items-center gap-1">
-                        <span className={`text-sm font-black tracking-tighter ${isLight ? 'text-black' : 'text-white'}`}>REVOLT</span>
-                        <span className={`text-sm font-black tracking-tighter ${isLight ? 'text-slate-400' : 'text-blue-500'}`}>LAB</span>
+                  <div className={`transition-all duration-700 ease-in-out transform flex items-center gap-3 ${isLight ? 'flex-row' : 'flex-row-reverse'}`}>
+                    <div className={`w-3 h-3 rounded-full transition-all duration-500 ${isLight ? 'bg-black shadow-[0_0_8px_rgba(0,0,0,0.2)]' : 'bg-blue-500 shadow-[0_0_12px_rgba(59,130,246,0.8)] animate-pulse'}`} />
+                    <div className="flex flex-col items-start leading-none pointer-events-none">
+                      <div className="flex items-center gap-0.5">
+                        <span className={`text-sm font-black tracking-tighter transition-colors ${isLight ? 'text-black' : 'text-white'}`}>REVOLT</span>
+                        <span className={`text-sm font-black tracking-tighter transition-colors ${isLight ? 'text-slate-400' : 'text-blue-500/80'}`}>LAB</span>
                       </div>
                     </div>
-                    {isLight && (
-                      <div className="w-2 h-2 rounded-full bg-black" />
-                    )}
                   </div>
                 </button>
               </div>
             </header>
 
-            <div className="flex flex-1 overflow-hidden">
+            <div className="flex flex-1 overflow-hidden p-6 gap-6">
               <ChatInterface 
                 messages={messages} 
                 onSendMessage={handleChat} 

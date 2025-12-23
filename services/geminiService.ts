@@ -9,8 +9,8 @@ export const getExperimentLogic = async (prompt: string, image?: ImageData): Pro
 }> => {
   const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
   
-  const parts: any[] = [{ text: `Plan an ultra-realistic 2D physics or chemistry simulation for: ${prompt}. 
-    Perform deep research to find the exact chemical reactions, physical constants, and apparatus behavior.
+  const parts: any[] = [{ text: `Plan a highly detailed 2D physics or chemistry simulation for: ${prompt}. 
+    Focus on environmental realism. If a simulation involves fluids (liquids/gases), always include "viscosity" and "density" parameters.
     If chemistry: specify color changes, PH levels, and reactivity speeds.
     If electronics: specify voltage, resistance, and bulb intensity models.
     Return a scientific description and a structured setup configuration.
@@ -95,15 +95,30 @@ export const getExperimentLogic = async (prompt: string, image?: ImageData): Pro
   }
 };
 
-export const chatWithLabAssistant = async (history: any[], message: string) => {
+export const chatWithLabAssistant = async (history: any[], message: string, image?: ImageData) => {
   const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
   
+  const contents: any = {
+    parts: [
+      { text: message || "Analyze the attached data." }
+    ]
+  };
+
+  if (image) {
+    contents.parts.push({
+      inlineData: {
+        data: image.data,
+        mimeType: image.mimeType
+      }
+    });
+  }
+
   const result = await ai.models.generateContent({
     model: 'gemini-3-flash-preview',
-    contents: message,
+    contents,
     config: {
       tools: [{ googleSearch: {} }],
-      systemInstruction: 'Your name is Bart. You are an expert Lab Assistant. Use Deep Research (Google Search) to provide precise, data-driven analysis of user queries. If the user mentions current experimental data or simulations, analyze the scientific implications. Keep responses professional, authoritative, and helpful.',
+      systemInstruction: 'Your name is Bart. You are an expert Lab Assistant. You can analyze experimental setups, data charts, and chemical reactions. Use Deep Research (Google Search) for precision. If an image is provided, use it as context for your scientific analysis. Be authoritative yet helpful.',
     },
   });
 
