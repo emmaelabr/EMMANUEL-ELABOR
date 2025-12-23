@@ -1,14 +1,14 @@
 
-import { GoogleGenAI, Type, GenerateContentResponse } from "@google/genai";
+import { GoogleGenAI, Type } from "@google/genai";
 import { ExperimentState } from "../types";
-
-const ai = new GoogleGenAI({ apiKey: process.env.API_KEY || 'AIzaSyDmN3Je260sagFmNWkt-6c-iqeNZRDgKUc' });
 
 export const getExperimentLogic = async (prompt: string): Promise<{ 
   description: string; 
   setup: Partial<ExperimentState>;
   sources?: { title: string; uri: string }[];
 }> => {
+  const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+  
   const response = await ai.models.generateContent({
     model: 'gemini-3-pro-preview',
     contents: `Plan a virtual lab experiment for: ${prompt}. 
@@ -27,8 +27,16 @@ export const getExperimentLogic = async (prompt: string): Promise<{
               name: { type: Type.STRING },
               type: { type: Type.STRING, enum: ['physics', 'chemistry'] },
               parameters: {
-                type: Type.OBJECT,
-                additionalProperties: { type: Type.NUMBER }
+                type: Type.ARRAY,
+                description: "List of numeric parameters for the experiment.",
+                items: {
+                  type: Type.OBJECT,
+                  properties: {
+                    name: { type: Type.STRING, description: "Name of the parameter (e.g., 'mass', 'gravity', 'molarity')" },
+                    value: { type: Type.NUMBER, description: "Default numeric value" }
+                  },
+                  required: ["name", "value"]
+                }
               },
               apparatus: {
                 type: Type.ARRAY,
@@ -48,12 +56,27 @@ export const getExperimentLogic = async (prompt: string): Promise<{
     .filter((web: any) => web) || [];
 
   try {
-    const data = JSON.parse(response.text);
-    return { ...data, sources };
+    const rawData = JSON.parse(response.text || '{}');
+    
+    const parameters: Record<string, number> = {};
+    if (Array.isArray(rawData.setup?.parameters)) {
+      rawData.setup.parameters.forEach((p: { name: string; value: number }) => {
+        parameters[p.name] = p.value;
+      });
+    }
+
+    return { 
+      description: rawData.description || "Experimental setup generated.",
+      setup: {
+        ...rawData.setup,
+        parameters
+      },
+      sources 
+    };
   } catch (e) {
     console.error("Failed to parse Gemini response", e);
     return {
-      description: response.text,
+      description: response.text || "Calibration failed. Please try a different approach.",
       setup: { name: 'Experiment', type: 'physics', parameters: {}, apparatus: [] },
       sources
     };
@@ -61,6 +84,7 @@ export const getExperimentLogic = async (prompt: string): Promise<{
 };
 
 export const chatWithLabAssistant = async (history: { role: string; parts: { text: string }[] }[], message: string) => {
+  const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
   const chat = ai.chats.create({
     model: 'gemini-3-flash-preview',
     config: {
