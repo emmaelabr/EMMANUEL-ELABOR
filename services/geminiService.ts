@@ -9,11 +9,12 @@ export const getExperimentLogic = async (prompt: string, image?: ImageData): Pro
 }> => {
   const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
   
-  const parts: any[] = [{ text: `Plan a virtual lab experiment for: ${prompt}. 
-    Define the physical or chemical parameters, apparatus needed, and the mathematical model.
-    Return a detailed scientific description for the user and a structured setup configuration.
-    If it's an electronics experiment, specify battery, resistor, bulb etc. in apparatus.
-    If an image is provided, analyze the visual context to determine the setup.` }];
+  const parts: any[] = [{ text: `Plan an ultra-realistic 2D physics or chemistry simulation for: ${prompt}. 
+    Perform deep research to find the exact chemical reactions, physical constants, and apparatus behavior.
+    If chemistry: specify color changes, PH levels, and reactivity speeds.
+    If electronics: specify voltage, resistance, and bulb intensity models.
+    Return a scientific description and a structured setup configuration.
+    If an image is provided, integrate its visual setup directly into the experiment logic.` }];
 
   if (image) {
     parts.push({
@@ -96,13 +97,15 @@ export const getExperimentLogic = async (prompt: string, image?: ImageData): Pro
 
 export const chatWithLabAssistant = async (history: any[], message: string) => {
   const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
-  const chat = ai.chats.create({
+  
+  const result = await ai.models.generateContent({
     model: 'gemini-3-flash-preview',
+    contents: message,
     config: {
-      systemInstruction: 'Your name is Bart. You are an expert Physics and Chemistry Lab Assistant for Revolt Lab. Provide scientific analytics, observations, and data-driven insights. If the user asks for a graph, confirm you are showing it. Keep responses professional and precise.',
+      tools: [{ googleSearch: {} }],
+      systemInstruction: 'Your name is Bart. You are an expert Lab Assistant. Use Deep Research (Google Search) to provide precise, data-driven analysis of user queries. If the user mentions current experimental data or simulations, analyze the scientific implications. Keep responses professional, authoritative, and helpful.',
     },
   });
 
-  const result = await chat.sendMessage({ message });
   return result.text;
 };
