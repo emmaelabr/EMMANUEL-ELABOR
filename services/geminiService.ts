@@ -1,19 +1,32 @@
 
 import { GoogleGenAI, Type } from "@google/genai";
-import { ExperimentState } from "../types";
+import { ExperimentState, ImageData } from "../types";
 
-export const getExperimentLogic = async (prompt: string): Promise<{ 
+export const getExperimentLogic = async (prompt: string, image?: ImageData): Promise<{ 
   description: string; 
   setup: Partial<ExperimentState>;
   sources?: { title: string; uri: string }[];
 }> => {
   const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
   
+  const parts: any[] = [{ text: `Plan a virtual lab experiment for: ${prompt}. 
+    Define the physical or chemical parameters, apparatus needed, and the mathematical model.
+    Return a detailed scientific description for the user and a structured setup configuration.
+    If it's an electronics experiment, specify battery, resistor, bulb etc. in apparatus.
+    If an image is provided, analyze the visual context to determine the setup.` }];
+
+  if (image) {
+    parts.push({
+      inlineData: {
+        data: image.data,
+        mimeType: image.mimeType
+      }
+    });
+  }
+
   const response = await ai.models.generateContent({
     model: 'gemini-3-pro-preview',
-    contents: `Plan a virtual lab experiment for: ${prompt}. 
-    Define the physical or chemical parameters, apparatus needed, and the mathematical model (how variables change over time).
-    Return a detailed scientific description and a structured setup configuration.`,
+    contents: { parts },
     config: {
       tools: [{ googleSearch: {} }],
       responseMimeType: "application/json",
@@ -25,15 +38,14 @@ export const getExperimentLogic = async (prompt: string): Promise<{
             type: Type.OBJECT,
             properties: {
               name: { type: Type.STRING },
-              type: { type: Type.STRING, enum: ['physics', 'chemistry'] },
+              type: { type: Type.STRING, enum: ['physics', 'chemistry', 'electronics'] },
               parameters: {
                 type: Type.ARRAY,
-                description: "List of numeric parameters for the experiment.",
                 items: {
                   type: Type.OBJECT,
                   properties: {
-                    name: { type: Type.STRING, description: "Name of the parameter (e.g., 'mass', 'gravity', 'molarity')" },
-                    value: { type: Type.NUMBER, description: "Default numeric value" }
+                    name: { type: Type.STRING },
+                    value: { type: Type.NUMBER }
                   },
                   required: ["name", "value"]
                 }
@@ -57,7 +69,6 @@ export const getExperimentLogic = async (prompt: string): Promise<{
 
   try {
     const rawData = JSON.parse(response.text || '{}');
-    
     const parameters: Record<string, number> = {};
     if (Array.isArray(rawData.setup?.parameters)) {
       rawData.setup.parameters.forEach((p: { name: string; value: number }) => {
@@ -76,19 +87,19 @@ export const getExperimentLogic = async (prompt: string): Promise<{
   } catch (e) {
     console.error("Failed to parse Gemini response", e);
     return {
-      description: response.text || "Calibration failed. Please try a different approach.",
+      description: response.text || "Calibration failed.",
       setup: { name: 'Experiment', type: 'physics', parameters: {}, apparatus: [] },
       sources
     };
   }
 };
 
-export const chatWithLabAssistant = async (history: { role: string; parts: { text: string }[] }[], message: string) => {
+export const chatWithLabAssistant = async (history: any[], message: string) => {
   const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
   const chat = ai.chats.create({
     model: 'gemini-3-flash-preview',
     config: {
-      systemInstruction: 'You are an expert Physics and Chemistry Lab Assistant for Revolt Lab. Help users understand the science behind their experiments. Be concise and accurate.',
+      systemInstruction: 'Your name is Bart. You are an expert Physics and Chemistry Lab Assistant for Revolt Lab. Provide scientific analytics, observations, and data-driven insights. If the user asks for a graph, confirm you are showing it. Keep responses professional and precise.',
     },
   });
 

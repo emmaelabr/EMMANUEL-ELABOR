@@ -4,33 +4,38 @@ import Sidebar from './components/Sidebar';
 import ChatInterface from './components/ChatInterface';
 import LabScene from './components/LabScene';
 import WelcomeScreen from './components/WelcomeScreen';
-import { ExperimentState, ChatMessage, GroundingSource } from './types';
+import NeutronStarLoading from './components/NeutronStarLoading';
+import { ExperimentState, ChatMessage, GroundingSource, ImageData } from './types';
 import { getExperimentLogic, chatWithLabAssistant } from './services/geminiService';
-import { ArrowLeft, Loader2 } from 'lucide-react';
+import { ArrowLeft } from 'lucide-react';
 
 type ViewState = 'welcome' | 'loading' | 'lab';
+type LayoutMode = 'split' | 'chat-only';
 
 const App: React.FC = () => {
   const [view, setView] = useState<ViewState>('welcome');
+  const [layoutMode, setLayoutMode] = useState<LayoutMode>('split');
   const [experiment, setExperiment] = useState<ExperimentState | null>(null);
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [sources, setSources] = useState<GroundingSource[]>([]);
   const [isTyping, setIsTyping] = useState(false);
+  const [isSidebarOpen, setIsSidebarOpen] = useState(false);
 
-  const startExperiment = async (prompt: string) => {
+  const startExperiment = async (prompt: string, mode: LayoutMode = 'split', image?: ImageData) => {
     setView('loading');
+    setLayoutMode(mode);
     setMessages([{ role: 'user', text: prompt }]);
     
     try {
-      const result = await getExperimentLogic(prompt);
+      const result = await getExperimentLogic(prompt, image);
       
       const newExp: ExperimentState = {
         id: Date.now().toString(),
         name: result.setup.name || 'New Experiment',
-        type: result.setup.type as 'physics' | 'chemistry' || 'physics',
+        type: (result.setup.type as any) || 'physics',
         description: result.description,
         parameters: result.setup.parameters || {},
-        apparatus: result.setup.apparatus as any || [],
+        apparatus: (result.setup.apparatus as any) || [],
         dataPoints: [],
         status: 'idle',
       };
@@ -39,25 +44,36 @@ const App: React.FC = () => {
       setSources(result.sources || []);
       setMessages(prev => [
         ...prev,
-        { role: 'model', text: `System online. I've prepared the ${newExp.name}. ${result.description}` }
+        { 
+          role: 'model', 
+          text: `${result.description}\n\nRevolt core initialized. I've configured the ${newExp.name}. ${mode === 'split' ? 'Real-time visualization is now active.' : 'I am standing by for deeper analysis.'}`,
+          showGraph: prompt.toLowerCase().includes('graph') || prompt.toLowerCase().includes('plot')
+        }
       ]);
-      setView('lab');
+      setTimeout(() => setView('lab'), 2000);
     } catch (error) {
       console.error(error);
       setView('welcome');
-      alert("The lab encountered a calibration error. Please try a different prompt.");
+      alert("Neural sync failure. Please retry with a different prompt.");
     }
   };
 
   const handleChat = async (text: string) => {
     setMessages(prev => [...prev, { role: 'user', text }]);
+
+    if (text.toLowerCase().includes('open experimental page')) {
+      setLayoutMode('split');
+      setMessages(prev => [...prev, { role: 'model', text: 'Switching to laboratory visualization mode.' }]);
+      return;
+    }
+
     setIsTyping(true);
-    
     try {
       const reply = await chatWithLabAssistant([], text);
-      setMessages(prev => [...prev, { role: 'model', text: reply }]);
+      const showGraph = text.toLowerCase().includes('graph') || text.toLowerCase().includes('plot') || text.toLowerCase().includes('data');
+      setMessages(prev => [...prev, { role: 'model', text: reply, showGraph }]);
     } catch (error) {
-      setMessages(prev => [...prev, { role: 'model', text: 'Calibration interrupted. Please repeat.' }]);
+      setMessages(prev => [...prev, { role: 'model', text: 'Communication error. Please restate.' }]);
     } finally {
       setIsTyping(false);
     }
@@ -73,7 +89,6 @@ const App: React.FC = () => {
   };
 
   const handleDataUpdate = useCallback((point: { x: number; y: number }) => {
-    // Storing data points silently for context, though no graph is shown
     setExperiment(prev => {
       if (!prev) return null;
       const newData = [...prev.dataPoints, point].slice(-100);
@@ -82,4 +97,13 @@ const App: React.FC = () => {
   }, []);
 
   return (
-    <div className="h-screen w-full bg-black text-slate-200 overflow-hidden font-sans selection:bg-blue-5
+    <div className="h-screen w-full bg-[#020617] text-slate-200 overflow-hidden font-sans selection:bg-blue-500/30">
+      {view === 'welcome' && (
+        <WelcomeScreen onStart={startExperiment} />
+      )}
+
+      {view === 'loading' && (
+        <NeutronStarLoading />
+      )}
+
+      {view === 'lab'

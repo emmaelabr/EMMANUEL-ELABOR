@@ -1,34 +1,40 @@
 
 import React, { useState, useEffect, useRef } from 'react';
-import { Brain, FlaskConical, Atom, Zap, Microscope, Beaker } from 'lucide-react';
+import { BrainCircuit, MessageCircleDashed, ImagePlus, Atom, Beaker, CheckCircle2 } from 'lucide-react';
+import { ImageData } from '../types';
 
 interface WelcomeScreenProps {
-  onStart: (prompt: string) => void;
+  onStart: (prompt: string, mode: 'split' | 'chat-only', image?: ImageData) => void;
+}
+
+interface Particle {
+  x: number;
+  y: number;
+  vx: number;
+  vy: number;
+  radius: number;
+  color: string;
+  baseVx: number;
+  baseVy: number;
 }
 
 const WelcomeScreen: React.FC<WelcomeScreenProps> = ({ onStart }) => {
   const [prompt, setPrompt] = useState('');
   const [placeholder, setPlaceholder] = useState('');
+  const [selectedImage, setSelectedImage] = useState<ImageData | null>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const mouseRef = useRef({ x: -1000, y: -1000 });
-  const [isInputFocused, setIsInputFocused] = useState(false);
-
-  const suggestions = [
-    { label: 'Pendulum Motion', icon: <Atom size={14} /> },
-    { label: 'HCl + NaOH Titration', icon: <FlaskConical size={14} /> },
-    { label: 'Projectile Trajectory', icon: <Zap size={14} /> },
-    { label: 'Osmosis Visualization', icon: <Microscope size={14} /> },
-  ];
+  const particlesRef = useRef<Particle[]>([]);
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   const typingSuggestions = [
     "Simulate a simple pendulum at 45 degrees...",
-    "Visualize HCl and NaOH titration curve...",
-    "Model projectile motion with 20m/s velocity...",
-    "Analyze Brownian motion of gold particles...",
-    "Observe osmosis in a semi-permeable membrane..."
+    "Visualize sodium and water reaction...",
+    "Model projectile motion with air resistance...",
+    "Analyze Brownian motion in fluid...",
+    "Design a circuit with a variable resistor..."
   ];
 
-  // Placeholder typing effect
   useEffect(() => {
     let currentIdx = 0;
     let charIdx = 0;
@@ -37,7 +43,6 @@ const WelcomeScreen: React.FC<WelcomeScreenProps> = ({ onStart }) => {
 
     const type = () => {
       const currentText = typingSuggestions[currentIdx];
-      
       if (isDeleting) {
         setPlaceholder(currentText.substring(0, charIdx - 1));
         charIdx--;
@@ -45,83 +50,69 @@ const WelcomeScreen: React.FC<WelcomeScreenProps> = ({ onStart }) => {
         setPlaceholder(currentText.substring(0, charIdx + 1));
         charIdx++;
       }
-
       let speed = isDeleting ? 30 : 70;
-
       if (!isDeleting && charIdx === currentText.length) {
         isDeleting = true;
-        speed = 2000; // Pause at end
+        speed = 2000;
       } else if (isDeleting && charIdx === 0) {
         isDeleting = false;
         currentIdx = (currentIdx + 1) % typingSuggestions.length;
-        speed = 500; // Pause before new word
+        speed = 500;
       }
-
       timeout = window.setTimeout(type, speed);
     };
-
     type();
     return () => clearTimeout(timeout);
   }, []);
 
-  // Particle simulation with mouse interactivity
   useEffect(() => {
     const canvas = canvasRef.current;
     if (!canvas) return;
-
     const ctx = canvas.getContext('2d');
     if (!ctx) return;
 
     let animationFrameId: number;
 
-    const particles: Array<{
-      x: number;
-      y: number;
-      vx: number;
-      vy: number;
-      radius: number;
-      color: string;
-      baseRadius: number;
-    }> = [];
+    const createParticles = () => {
+      particlesRef.current = [];
+      // Increased count for higher visibility
+      const count = Math.floor((window.innerWidth * window.innerHeight) / 10000);
+      for (let i = 0; i < count; i++) {
+        const vx = (Math.random() - 0.5) * 1.2;
+        const vy = (Math.random() - 0.5) * 1.2;
+        const color = Math.random() > 0.5 ? '#3b82f6' : '#ffffff';
+        particlesRef.current.push({
+          x: Math.random() * canvas.width,
+          y: Math.random() * canvas.height,
+          vx: vx,
+          vy: vy,
+          baseVx: vx,
+          baseVy: vy,
+          radius: Math.random() * 3 + 1.5, // Larger particles
+          color: color
+        });
+      }
+    };
 
     const resize = () => {
       canvas.width = window.innerWidth;
       canvas.height = window.innerHeight;
+      createParticles();
     };
+
+    window.addEventListener('resize', resize);
+    resize();
 
     const handleMouseMove = (e: MouseEvent) => {
       mouseRef.current = { x: e.clientX, y: e.clientY };
     };
-
-    window.addEventListener('resize', resize);
     window.addEventListener('mousemove', handleMouseMove);
-    resize();
-
-    // Initialize particles
-    const particleCount = 120;
-    for (let i = 0; i < particleCount; i++) {
-      const radius = Math.random() * 2 + 1;
-      particles.push({
-        x: Math.random() * canvas.width,
-        y: Math.random() * canvas.height,
-        vx: (Math.random() - 0.5) * 1.5,
-        vy: (Math.random() - 0.5) * 1.5,
-        radius: radius,
-        baseRadius: radius,
-        color: Math.random() > 0.6 ? '#3b82f6' : '#ffffff',
-      });
-    }
 
     const draw = () => {
-      ctx.fillStyle = 'rgba(0, 0, 0, 0.2)';
+      ctx.fillStyle = '#020617';
       ctx.fillRect(0, 0, canvas.width, canvas.height);
 
-      particles.forEach((p) => {
-        // Brownian motion kicks
-        p.vx += (Math.random() - 0.5) * 0.15;
-        p.vy += (Math.random() - 0.5) * 0.15;
-
-        // Mouse interaction
+      particlesRef.current.forEach(p => {
         const dx = mouseRef.current.x - p.x;
         const dy = mouseRef.current.y - p.y;
         const dist = Math.sqrt(dx * dx + dy * dy);
@@ -129,46 +120,45 @@ const WelcomeScreen: React.FC<WelcomeScreenProps> = ({ onStart }) => {
 
         if (dist < maxDist) {
           const force = (maxDist - dist) / maxDist;
-          p.vx -= (dx / dist) * force * 0.4; // Repel
-          p.vy -= (dy / dist) * force * 0.4;
-          p.radius = p.baseRadius * (1 + force * 2);
+          p.vx -= (dx / dist) * force * 0.8;
+          p.vy -= (dy / dist) * force * 0.8;
         } else {
-          p.radius = p.baseRadius;
+          p.vx += (p.baseVx - p.vx) * 0.05;
+          p.vy += (p.baseVy - p.vy) * 0.05;
         }
-
-        // Velocity damping
-        p.vx *= 0.98;
-        p.vy *= 0.98;
 
         p.x += p.vx;
         p.y += p.vy;
 
-        // Bounce walls
         if (p.x < 0 || p.x > canvas.width) p.vx *= -1;
         if (p.y < 0 || p.y > canvas.height) p.vy *= -1;
 
         ctx.beginPath();
         ctx.arc(p.x, p.y, p.radius, 0, Math.PI * 2);
-        ctx.fillStyle = p.color;
-        ctx.shadowBlur = dist < maxDist ? 15 : 0;
+        
+        // Glow effect
+        ctx.shadowBlur = dist < maxDist ? 20 : 10;
         ctx.shadowColor = p.color;
+        
+        ctx.fillStyle = p.color;
+        ctx.globalAlpha = dist < maxDist ? 1.0 : 0.7; // Higher visibility
         ctx.fill();
+        ctx.globalAlpha = 1.0;
         ctx.shadowBlur = 0;
       });
 
-      // Connections
-      ctx.lineWidth = 0.4;
-      for (let i = 0; i < particles.length; i++) {
-        for (let j = i + 1; j < particles.length; j++) {
-          const dx = particles[i].x - particles[j].x;
-          const dy = particles[i].y - particles[j].y;
-          const dist = Math.sqrt(dx * dx + dy * dy);
-          if (dist < 80) {
-            const alpha = (1 - dist / 80) * 0.2;
-            ctx.strokeStyle = `rgba(59, 130, 246, ${alpha})`;
+      // Connecting lines
+      ctx.strokeStyle = 'rgba(59, 130, 246, 0.1)';
+      ctx.lineWidth = 1;
+      for (let i = 0; i < particlesRef.current.length; i++) {
+        for (let j = i + 1; j < particlesRef.current.length; j++) {
+          const p1 = particlesRef.current[i];
+          const p2 = particlesRef.current[j];
+          const d = Math.sqrt((p1.x - p2.x)**2 + (p1.y - p2.y)**2);
+          if (d < 120) {
             ctx.beginPath();
-            ctx.moveTo(particles[i].x, particles[i].y);
-            ctx.lineTo(particles[j].x, particles[j].y);
+            ctx.moveTo(p1.x, p1.y);
+            ctx.lineTo(p2.x, p2.y);
             ctx.stroke();
           }
         }
@@ -178,7 +168,6 @@ const WelcomeScreen: React.FC<WelcomeScreenProps> = ({ onStart }) => {
     };
 
     draw();
-
     return () => {
       window.removeEventListener('resize', resize);
       window.removeEventListener('mousemove', handleMouseMove);
@@ -186,79 +175,90 @@ const WelcomeScreen: React.FC<WelcomeScreenProps> = ({ onStart }) => {
     };
   }, []);
 
-  const handleSubmit = (e: React.FormEvent) => {
-    e.preventDefault();
-    if (prompt.trim()) onStart(prompt);
+  const handleImageImport = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (file) {
+      const reader = new FileReader();
+      reader.onloadend = () => {
+        const base64String = (reader.result as string).split(',')[1];
+        setSelectedImage({
+          data: base64String,
+          mimeType: file.type
+        });
+      };
+      reader.readAsDataURL(file);
+    }
+  };
+
+  const handleAction = (mode: 'split' | 'chat-only') => {
+    if (prompt.trim() || selectedImage) {
+      onStart(prompt || "Experiment based on image", mode, selectedImage || undefined);
+    }
   };
 
   return (
-    <div className="relative h-screen w-full flex flex-col items-center justify-center bg-black overflow-hidden select-none">
+    <div className="relative h-screen w-full flex flex-col items-center justify-center bg-[#020617] overflow-hidden select-none">
       <canvas ref={canvasRef} className="absolute inset-0 z-0 pointer-events-none" />
 
-      <div className="z-10 w-full max-w-4xl px-8 flex flex-col items-center text-center animate-in fade-in slide-in-from-bottom-12 duration-1000">
-        
-        {/* The Badge - Scientific and Simple */}
-        <div className="mb-10 inline-flex items-center gap-3 px-8 py-3 rounded-full bg-white/5 border border-white/10 backdrop-blur-xl shadow-[0_0_30px_rgba(59,130,246,0.1)] group hover:border-blue-500/30 transition-all duration-500">
-          <Beaker className="text-blue-500 group-hover:scale-110 group-hover:rotate-12 transition-all" size={20} />
-          <span className="text-sm font-bold tracking-[0.6em] uppercase text-white pl-2">RevoltLab</span>
+      <div className="z-10 w-full max-w-4xl px-8 flex flex-col items-center text-center animate-in fade-in zoom-in duration-1000">
+        <div className="mb-8 inline-flex items-center gap-3 px-6 py-2.5 rounded-full bg-white/5 border border-white/10 backdrop-blur-2xl shadow-2xl group hover:border-blue-500/30 transition-all duration-500">
+          <Beaker className="text-blue-500" size={18} />
+          <span className="text-[10px] font-black tracking-[0.6em] uppercase text-slate-300">Revolt Lab</span>
         </div>
 
-        <p className="text-2xl md:text-3xl text-white mb-16 max-w-2xl mx-auto font-extralight leading-tight tracking-tight">
-          Design, simulate, and analyze your next breakthrough in our <span className="text-blue-500 font-normal">AI-driven</span> virtual laboratory.
-        </p>
+        <h1 className="text-4xl md:text-6xl text-white font-extralight mb-16 tracking-tight">
+          A lab <span className="text-blue-500 font-bold italic">right in your system</span>
+        </h1>
 
-        <form onSubmit={handleSubmit} className="relative group w-full max-w-2xl mx-auto mb-12">
-          {/* Decorative glow that 'flows' with the concept */}
-          <div className="absolute -inset-4 bg-blue-600 rounded-[3rem] blur-3xl opacity-0 group-hover:opacity-10 transition duration-1000"></div>
-          
-          <div className="relative">
+        <div className="relative w-full max-w-2xl mx-auto mb-8">
+          <div className="relative flex items-center">
             <input
               type="text"
               value={prompt}
-              onFocus={() => setIsInputFocused(true)}
-              onBlur={() => setIsInputFocused(false)}
               onChange={(e) => setPrompt(e.target.value)}
               placeholder={prompt ? "" : placeholder}
-              className="w-full bg-black/40 backdrop-blur-3xl border border-white/10 rounded-[2.5rem] py-8 pl-10 pr-24 text-white text-xl placeholder-slate-600 focus:outline-none focus:border-blue-500/50 focus:ring-8 focus:ring-blue-500/5 transition-all shadow-2xl"
+              onKeyDown={(e) => e.key === 'Enter' && handleAction('split')}
+              className="w-full bg-slate-900/50 backdrop-blur-3xl border border-white/10 rounded-3xl py-7 pl-8 pr-56 text-white text-lg placeholder-slate-600 focus:outline-none focus:border-blue-500/50 transition-all shadow-[0_0_50px_rgba(0,0,0,0.5)]"
             />
-            {/* Visual indicator for "active" input */}
-            <div className={`absolute bottom-0 left-10 right-10 h-[1px] bg-gradient-to-r from-transparent via-blue-500 to-transparent transition-opacity duration-500 ${isInputFocused ? 'opacity-100' : 'opacity-20'}`}></div>
             
-            <button 
-              type="submit"
-              className="absolute right-4 top-4 bottom-4 aspect-square bg-blue-600 text-white rounded-3xl flex items-center justify-center hover:bg-blue-500 hover:scale-105 hover:shadow-[0_0_25px_rgba(59,130,246,0.6)] transition-all active:scale-95 shadow-lg"
-            >
-              <Brain size={32} />
-            </button>
+            <div className="absolute right-3 flex items-center gap-2">
+              <input 
+                type="file" 
+                ref={fileInputRef} 
+                className="hidden" 
+                accept="image/*" 
+                onChange={handleImageImport}
+              />
+              <button 
+                onClick={() => fileInputRef.current?.click()}
+                className={`w-12 h-12 rounded-xl flex items-center justify-center transition-all ${selectedImage ? 'bg-emerald-600 text-white' : 'bg-white/5 text-slate-400 hover:text-white hover:bg-white/10'}`}
+                title="Import Image Context"
+              >
+                {selectedImage ? <CheckCircle2 size={20} /> : <ImagePlus size={20} />}
+              </button>
+              <button 
+                onClick={() => handleAction('chat-only')}
+                className="w-12 h-12 bg-white/5 text-slate-400 hover:text-white hover:bg-white/10 rounded-xl flex items-center justify-center transition-all"
+                title="Bart Analytics"
+              >
+                <MessageCircleDashed size={20} />
+              </button>
+              <button 
+                onClick={() => handleAction('split')}
+                className="w-14 h-14 bg-blue-600 text-white rounded-2xl flex items-center justify-center hover:bg-blue-500 hover:scale-105 transition-all shadow-xl"
+                title="Launch Experiment"
+              >
+                <BrainCircuit size={24} />
+              </button>
+            </div>
           </div>
-        </form>
-
-        <div className="flex flex-wrap justify-center gap-5">
-          {suggestions.map((item) => (
-            <button
-              key={item.label}
-              onClick={() => onStart(item.label)}
-              className="flex items-center gap-3 px-8 py-4 rounded-2xl bg-white/5 border border-white/5 hover:bg-white/10 hover:border-blue-500/40 hover:translate-y-[-2px] transition-all text-sm font-medium text-slate-400 hover:text-white group backdrop-blur-md"
-            >
-              <span className="text-blue-500 group-hover:scale-125 transition-transform duration-300">{item.icon}</span>
-              {item.label}
-            </button>
-          ))}
-        </div>
-
-        <div className="mt-24 flex justify-center gap-24 text-slate-600">
-          <div className="flex flex-col items-center group cursor-default">
-            <span className="text-5xl font-extralight text-white group-hover:text-blue-400 transition-colors">40+</span>
-            <span className="text-[10px] uppercase tracking-[0.5em] font-black mt-4 text-slate-500 group-hover:text-slate-300 transition-colors">Apparatus</span>
-          </div>
-          <div className="flex flex-col items-center group cursor-default">
-            <span className="text-5xl font-extralight text-white tracking-[0.1em] group-hover:text-blue-400 transition-colors">REAL</span>
-            <span className="text-[10px] uppercase tracking-[0.5em] font-black mt-4 text-slate-500 group-hover:text-slate-300 transition-colors">Data Feed</span>
-          </div>
-          <div className="flex flex-col items-center group cursor-default">
-            <span className="text-5xl font-extralight text-white group-hover:text-blue-400 transition-colors">AI</span>
-            <span className="text-[10px] uppercase tracking-[0.5em] font-black mt-4 text-slate-500 group-hover:text-slate-300 transition-colors">Engine</span>
-          </div>
+          
+          {selectedImage && (
+            <div className="absolute -bottom-10 left-8 flex items-center gap-2 text-[10px] text-emerald-400 font-black uppercase tracking-widest animate-pulse">
+              <Atom size={12} /> Visual Data Cached
+              <button onClick={() => setSelectedImage(null)} className="ml-2 text-slate-500 hover:text-white transition-colors">Clear</button>
+            </div>
+          )}
         </div>
       </div>
     </div>
