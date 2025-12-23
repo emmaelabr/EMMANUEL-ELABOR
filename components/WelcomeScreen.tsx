@@ -80,12 +80,13 @@ const WelcomeScreen: React.FC<WelcomeScreenProps> = ({ onStart, theme, onThemeTo
 
     const createParticles = () => {
       particlesRef.current = [];
-      const count = Math.floor((window.innerWidth * window.innerHeight) / 7000);
+      const density = 8000;
+      const count = Math.min(250, Math.floor((window.innerWidth * window.innerHeight) / density));
       const particleColor = isLight ? '#000000' : '#3b82f6';
       
       for (let i = 0; i < count; i++) {
-        const vx = (Math.random() - 0.5) * 1.5;
-        const vy = (Math.random() - 0.5) * 1.5;
+        const vx = (Math.random() - 0.5) * 1.2;
+        const vy = (Math.random() - 0.5) * 1.2;
         particlesRef.current.push({
           x: Math.random() * canvas.width,
           y: Math.random() * canvas.height,
@@ -93,7 +94,7 @@ const WelcomeScreen: React.FC<WelcomeScreenProps> = ({ onStart, theme, onThemeTo
           vy: vy,
           baseVx: vx,
           baseVy: vy,
-          radius: Math.random() * 2 + 1,
+          radius: Math.random() * 2.5 + 1.5,
           color: particleColor
         });
       }
@@ -117,34 +118,65 @@ const WelcomeScreen: React.FC<WelcomeScreenProps> = ({ onStart, theme, onThemeTo
       ctx.fillStyle = isLight ? '#ffffff' : '#020617';
       ctx.fillRect(0, 0, canvas.width, canvas.height);
 
-      particlesRef.current.forEach(p => {
+      const particles = particlesRef.current;
+      const connectionDist = 140;
+      const mouseDist = 200;
+
+      for (let i = 0; i < particles.length; i++) {
+        const p = particles[i];
+
+        // Mouse Interactivity: Smooth repulsion
         const dx = mouseRef.current.x - p.x;
         const dy = mouseRef.current.y - p.y;
         const dist = Math.sqrt(dx * dx + dy * dy);
-        const maxDist = 200;
 
-        if (dist < maxDist) {
-          const force = (maxDist - dist) / maxDist;
-          p.vx -= (dx / dist) * force * 1.5;
-          p.vy -= (dy / dist) * force * 1.5;
+        if (dist < mouseDist) {
+          const force = (mouseDist - dist) / mouseDist;
+          const angle = Math.atan2(dy, dx);
+          p.vx -= Math.cos(angle) * force * 0.8;
+          p.vy -= Math.sin(angle) * force * 0.8;
+          // Slowly increase radius near mouse
+          p.radius = Math.min(5, p.radius + 0.1);
         } else {
-          p.vx += (p.baseVx - p.vx) * 0.08;
-          p.vy += (p.baseVy - p.vy) * 0.08;
+          p.vx += (p.baseVx - p.vx) * 0.05;
+          p.vy += (p.baseVy - p.vy) * 0.05;
+          p.radius = Math.max(1.5, p.radius - 0.05);
         }
 
         p.x += p.vx;
         p.y += p.vy;
 
+        // Friction to prevent infinite acceleration
+        p.vx *= 0.98;
+        p.vy *= 0.98;
+
+        // Boundary bounce
         if (p.x < 0 || p.x > canvas.width) p.vx *= -1;
         if (p.y < 0 || p.y > canvas.height) p.vy *= -1;
 
+        // Plexus Effect: Draw connections
+        for (let j = i + 1; j < particles.length; j++) {
+          const p2 = particles[j];
+          const dist2 = Math.sqrt((p.x - p2.x) ** 2 + (p.y - p2.y) ** 2);
+          if (dist2 < connectionDist) {
+            const opacity = (1 - dist2 / connectionDist) * (isLight ? 0.2 : 0.4);
+            ctx.strokeStyle = isLight ? `rgba(0,0,0,${opacity})` : `rgba(59,130,246,${opacity})`;
+            ctx.lineWidth = 1;
+            ctx.beginPath();
+            ctx.moveTo(p.x, p.y);
+            ctx.lineTo(p2.x, p2.y);
+            ctx.stroke();
+          }
+        }
+
+        // Draw particle
         ctx.beginPath();
         ctx.arc(p.x, p.y, p.radius, 0, Math.PI * 2);
         ctx.fillStyle = p.color;
-        ctx.globalAlpha = isLight ? 0.15 : 0.4;
+        ctx.globalAlpha = isLight ? 0.3 : 0.6;
         ctx.fill();
         ctx.globalAlpha = 1.0;
-      });
+      }
 
       animationFrameId = requestAnimationFrame(draw);
     };
@@ -184,21 +216,18 @@ const WelcomeScreen: React.FC<WelcomeScreenProps> = ({ onStart, theme, onThemeTo
         {/* Revolt Lab Kinetic Theme Toggle Logo */}
         <button 
           onClick={onThemeToggle}
-          className="group mb-16 flex items-center gap-6 cursor-pointer"
+          className="group mb-16 flex items-center gap-6 cursor-pointer outline-none"
         >
-          <div className="flex items-center gap-4 py-2 px-6 rounded-full border border-current/10 bg-current/5 backdrop-blur-sm transition-all hover:scale-105 active:scale-95">
-            {!isLight && (
-              <div className="w-3 h-3 rounded-full bg-blue-500 shadow-[0_0_12px_rgba(59,130,246,0.8)] animate-pulse" />
-            )}
-            <div className="flex flex-col items-start leading-none">
-               <div className="flex items-center gap-1">
-                 <span className={`text-xl font-black tracking-tighter transition-colors ${isLight ? 'text-black' : 'text-white'}`}>REVOLT</span>
-                 <span className={`text-xl font-black tracking-tighter transition-colors ${isLight ? 'text-slate-400' : 'text-blue-500/80'}`}>LAB</span>
-               </div>
+          <div className="flex items-center gap-4 py-3 px-8 rounded-full border border-current/10 bg-current/5 backdrop-blur-md transition-all hover:bg-current/10 hover:scale-105 active:scale-95 shadow-xl">
+            <div className={`transition-all duration-700 ease-in-out transform flex items-center gap-4 ${isLight ? 'flex-row' : 'flex-row-reverse'}`}>
+              <div className={`w-4 h-4 rounded-full transition-all duration-500 ${isLight ? 'bg-black shadow-[0_0_10px_rgba(0,0,0,0.3)]' : 'bg-blue-500 shadow-[0_0_15px_rgba(59,130,246,0.9)] animate-pulse'}`} />
+              <div className="flex flex-col items-start leading-none pointer-events-none">
+                <div className="flex items-center gap-1">
+                  <span className={`text-2xl font-black tracking-tighter transition-colors ${isLight ? 'text-black' : 'text-white'}`}>REVOLT</span>
+                  <span className={`text-2xl font-black tracking-tighter transition-colors ${isLight ? 'text-slate-400' : 'text-blue-500/80'}`}>LAB</span>
+                </div>
+              </div>
             </div>
-            {isLight && (
-              <div className="w-3 h-3 rounded-full bg-black shadow-[0_0_8px_rgba(0,0,0,0.2)]" />
-            )}
           </div>
         </button>
 
