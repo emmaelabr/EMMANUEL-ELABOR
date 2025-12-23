@@ -1,0 +1,8 @@
+{
+  "name": "Revolt Lab",
+  "description": "An AI-powered virtual laboratory for physics and chemistry experiments, featuring 3D visualizations and real-time data plotting.",
+  "requestFramePermissions": [
+    "camera",
+    "microphone"
+  ]
+}
