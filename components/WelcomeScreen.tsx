@@ -1,11 +1,11 @@
 
 import React, { useState, useEffect, useRef } from 'react';
-import { BrainCircuit, MessageCircleDashed, ImagePlus, Atom, CheckCircle2, X } from 'lucide-react';
-import { ImageData } from '../types';
+import { BrainCircuit, MessageCircleDashed, ImagePlus, Atom, CheckCircle2, X, FileText } from 'lucide-react';
+import { AttachmentData } from '../types';
 import { Theme } from '../App';
 
 interface WelcomeScreenProps {
-  onStart: (prompt: string, mode: 'split' | 'chat-only', image?: ImageData) => void;
+  onStart: (prompt: string, mode: 'split' | 'chat-only', attachment?: AttachmentData) => void;
   theme: Theme;
   onThemeToggle: () => void;
 }
@@ -13,7 +13,7 @@ interface WelcomeScreenProps {
 const WelcomeScreen: React.FC<WelcomeScreenProps> = ({ onStart, theme, onThemeToggle }) => {
   const [prompt, setPrompt] = useState('');
   const [placeholder, setPlaceholder] = useState('');
-  const [selectedImage, setSelectedImage] = useState<ImageData | null>(null);
+  const [selectedFile, setSelectedFile] = useState<AttachmentData | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const isLight = theme === 'light';
@@ -44,23 +44,30 @@ const WelcomeScreen: React.FC<WelcomeScreenProps> = ({ onStart, theme, onThemeTo
     return () => clearTimeout(timeout);
   }, []);
 
-  const handleImageImport = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleFileImport = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (file) {
       const reader = new FileReader();
       reader.onloadend = () => {
         const base64String = (reader.result as string).split(',')[1];
-        setSelectedImage({ data: base64String, mimeType: file.type });
+        setSelectedFile({ 
+          data: base64String, 
+          mimeType: file.type || 'application/octet-stream',
+          name: file.name
+        });
       };
       reader.readAsDataURL(file);
     }
   };
 
   const handleAction = (mode: 'split' | 'chat-only') => {
-    if (prompt.trim() || selectedImage) {
-      onStart(prompt || "Analysis based on image", mode, selectedImage || undefined);
+    if (prompt.trim() || selectedFile) {
+      onStart(prompt || `Analysis based on ${selectedFile?.name || 'file'}`, mode, selectedFile || undefined);
     }
   };
+
+  const isPDF = selectedFile?.mimeType === 'application/pdf';
+  const isTXT = selectedFile?.mimeType === 'text/plain';
 
   return (
     <div className={`relative h-screen w-full flex flex-col items-center justify-center overflow-hidden transition-colors duration-700 z-10`}>
@@ -96,13 +103,23 @@ const WelcomeScreen: React.FC<WelcomeScreenProps> = ({ onStart, theme, onThemeTo
             />
             
             <div className="absolute right-1 flex items-center gap-1">
-              <input type="file" ref={fileInputRef} className="hidden" accept="image/*" onChange={handleImageImport} />
+              <input 
+                type="file" 
+                ref={fileInputRef} 
+                className="hidden" 
+                accept="image/*,application/pdf,text/plain" 
+                onChange={handleFileImport} 
+              />
               <button 
                 onClick={() => fileInputRef.current?.click()}
-                className={`w-12 h-12 border border-current flex items-center justify-center transition-all ${selectedImage ? 'bg-black text-white' : 'hover:bg-black hover:text-white'}`}
-                title="Attach Document"
+                className={`w-12 h-12 border border-current flex items-center justify-center transition-all ${selectedFile ? 'bg-black text-white' : 'hover:bg-black hover:text-white'}`}
+                title="Attach Document (Image, PDF, TXT)"
               >
-                {selectedImage ? <CheckCircle2 size={16} /> : <ImagePlus size={16} />}
+                {selectedFile ? (
+                  isPDF ? <FileText size={16} /> : <CheckCircle2 size={16} />
+                ) : (
+                  <ImagePlus size={16} />
+                )}
               </button>
               <button 
                 onClick={() => handleAction('split')}
@@ -114,10 +131,10 @@ const WelcomeScreen: React.FC<WelcomeScreenProps> = ({ onStart, theme, onThemeTo
             </div>
           </div>
           
-          {selectedImage && (
+          {selectedFile && (
             <div className="absolute -bottom-8 left-0 flex items-center gap-2 text-[8px] font-black uppercase tracking-[0.3em] animate-in slide-in-from-top-1">
-              <Atom size={10} className="animate-spin-slow" /> Calibration_Stream_Ready
-              <button onClick={() => setSelectedImage(null)} className="ml-2 hover:line-through opacity-50 transition-opacity">Discard</button>
+              <Atom size={10} className="animate-spin-slow" /> {selectedFile.name?.toUpperCase() || 'DATA_STREAM_READY'}
+              <button onClick={() => setSelectedFile(null)} className="ml-2 hover:line-through opacity-50 transition-opacity">Discard</button>
             </div>
           )}
         </div>

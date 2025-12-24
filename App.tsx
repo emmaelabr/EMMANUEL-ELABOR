@@ -6,7 +6,7 @@ import LabScene from './components/LabScene';
 import WelcomeScreen from './components/WelcomeScreen';
 import NeutronStarLoading from './components/NeutronStarLoading';
 import GlobalParticles from './components/GlobalParticles';
-import { ExperimentState, ChatMessage, GroundingSource, ImageData } from './types';
+import { ExperimentState, ChatMessage, GroundingSource, AttachmentData } from './types';
 import { getExperimentLogic, chatWithLabAssistant } from './services/geminiService';
 import { ArrowLeft } from 'lucide-react';
 
@@ -17,7 +17,6 @@ export type Theme = 'light' | 'dark';
 const App: React.FC = () => {
   const [view, setView] = useState<ViewState>('welcome');
   const [layoutMode, setLayoutMode] = useState<LayoutMode>('split');
-  // Default to light for the professional Black & White look
   const [theme, setTheme] = useState<Theme>('light');
   const [experiment, setExperiment] = useState<ExperimentState | null>(null);
   const [messages, setMessages] = useState<ChatMessage[]>([]);
@@ -34,22 +33,24 @@ const App: React.FC = () => {
 
   const toggleTheme = () => setTheme(prev => prev === 'light' ? 'dark' : 'light');
 
-  const startExperiment = async (prompt: string, mode: LayoutMode = 'split', image?: ImageData) => {
+  const startExperiment = async (prompt: string, mode: LayoutMode = 'split', attachment?: AttachmentData) => {
     setView('loading');
     setLayoutMode(mode);
-    setMessages([{ role: 'user', text: prompt }]);
+    setMessages([{ role: 'user', text: prompt + (attachment ? ` [Attached: ${attachment.name || 'File'}]` : '') }]);
     
     try {
-      const result = await getExperimentLogic(prompt, image);
+      const result = await getExperimentLogic(prompt, attachment);
       const newExp: ExperimentState = {
         id: Date.now().toString(),
-        name: result.setup.name || 'New Experiment',
-        type: (result.setup.type as any) || 'physics',
+        name: result.setup.name || 'Scientific Research',
+        type: (result.setup.type as any) || 'dynamic',
         description: result.description,
         parameters: result.setup.parameters || {},
         apparatus: (result.setup.apparatus as any) || [],
         dataPoints: [],
         status: 'idle',
+        entities: result.setup.entities || [],
+        physicsRules: result.setup.physicsRules || [],
       };
 
       setExperiment(newExp);
@@ -58,8 +59,8 @@ const App: React.FC = () => {
         ...prev,
         { 
           role: 'model', 
-          text: `${result.description}\n\nRevolt core initialized. Simulation standing by.`,
-          showGraph: prompt.toLowerCase().includes('graph') || prompt.toLowerCase().includes('plot'),
+          text: result.description,
+          showGraph: prompt.toLowerCase().includes('graph') || prompt.toLowerCase().includes('data'),
           sources: result.sources
         }
       ]);
@@ -67,20 +68,46 @@ const App: React.FC = () => {
     } catch (error) {
       console.error(error);
       setView('welcome');
-      alert("Neural sync failure.");
+      alert("Neural sync failure. Check API keys and network.");
     }
   };
 
-  const handleChat = async (text: string, image?: ImageData) => {
-    setMessages(prev => [...prev, { role: 'user', text: text || (image ? "[Image Attached]" : "") }]);
+  const handleChat = async (text: string, attachment?: AttachmentData) => {
+    const userMsg = text || (attachment ? `File: ${attachment.name}` : "");
+    if (!userMsg) return;
+
+    setMessages(prev => [...prev, { role: 'user', text: userMsg }]);
     setIsTyping(true);
+    
     try {
-      const { text: reply, sources: newSources } = await chatWithLabAssistant([], text, image);
-      const showGraph = text.toLowerCase().includes('graph') || text.toLowerCase().includes('plot');
-      setMessages(prev => [...prev, { role: 'model', text: reply, showGraph, sources: newSources }]);
+      const { text: reply, sources: newSources, newExperiment, showGraph } = await chatWithLabAssistant([], text, attachment);
+      
+      if (newExperiment) {
+        // If a new setup is provided, we completely swap the experiment state
+        setExperiment({
+          id: Date.now().toString(),
+          name: newExperiment.name || 'Updated Visualization',
+          type: (newExperiment.type as any) || 'dynamic',
+          description: reply,
+          parameters: newExperiment.parameters || {},
+          apparatus: newExperiment.apparatus || [],
+          dataPoints: [], 
+          status: 'idle',
+          entities: newExperiment.entities || [],
+          physicsRules: newExperiment.physicsRules || []
+        });
+      }
+
+      setMessages(prev => [...prev, { 
+        role: 'model', 
+        text: reply, 
+        showGraph: showGraph || false, 
+        sources: newSources 
+      }]);
       setSources(newSources);
     } catch (error) {
-      setMessages(prev => [...prev, { role: 'model', text: 'Communication error.' }]);
+      console.error("Chat Error:", error);
+      setMessages(prev => [...prev, { role: 'model', text: 'Synthesis failed. The laboratory is attempting to reconnect...' }]);
     } finally {
       setIsTyping(false);
     }
@@ -98,6 +125,7 @@ const App: React.FC = () => {
   const handleDataUpdate = useCallback((point: { x: number; y: number }) => {
     setExperiment(prev => {
       if (!prev) return null;
+      // Keep only last 100 points for performance
       const newData = [...prev.dataPoints, point].slice(-100);
       return { ...prev, dataPoints: newData };
     });
@@ -111,7 +139,7 @@ const App: React.FC = () => {
         <WelcomeScreen onStart={startExperiment} theme={theme} onThemeToggle={toggleTheme} />
       )}
 
-      {view === 'loading' && <NeutronStarLoading />}
+      {view === 'loading' && <NeutronStarLoading theme={theme} />}
 
       {view === 'lab' && (
         <div className="flex h-screen w-full animate-in duration-700 relative z-10">
@@ -147,16 +175,9 @@ const App: React.FC = () => {
                 >
                   {layoutMode === 'split' ? 'Maximize' : 'Split View'}
                 </button>
-
-                <button 
-                  onClick={toggleTheme}
-                  className="flex items-center gap-2 group cursor-pointer outline-none"
-                >
-                   <div className={`w-8 h-4 rounded-full p-0.5 border transition-all ${isLight ? 'border-black bg-white' : 'border-white/20 bg-black'}`}>
-                      <div className={`w-2.5 h-2.5 rounded-full transition-all duration-500 ${isLight ? 'bg-black translate-x-0' : 'bg-white translate-x-4'}`} />
-                   </div>
-                   <span className="text-[9px] font-black uppercase tracking-widest">Toggle Phase</span>
-                </button>
+                <div className={`px-3 py-1 text-[8px] font-black uppercase tracking-[0.2em] opacity-40 border ${isLight ? 'border-black' : 'border-white/20'}`}>
+                  Phase_Locked: {theme.toUpperCase()}
+                </div>
               </div>
             </header>
 

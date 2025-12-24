@@ -1,13 +1,13 @@
 
 import React, { useState, useRef, useEffect } from 'react';
-import { Send, Bot, User, Globe, Sparkles, Activity, ImagePlus, X, CheckCircle2 } from 'lucide-react';
-import { ChatMessage, GroundingSource, ImageData } from '../types';
+import { Send, Bot, User, Globe, Sparkles, Activity, ImagePlus, X, CheckCircle2, FileText } from 'lucide-react';
+import { ChatMessage, GroundingSource, AttachmentData } from '../types';
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
 import { Theme } from '../App';
 
 interface ChatInterfaceProps {
   messages: ChatMessage[];
-  onSendMessage: (text: string, image?: ImageData) => void;
+  onSendMessage: (text: string, attachment?: AttachmentData) => void;
   sources: GroundingSource[];
   isTyping: boolean;
   currentExperimentData: Array<{ x: number; y: number }>;
@@ -25,7 +25,7 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({
   theme
 }) => {
   const [input, setInput] = useState('');
-  const [selectedImage, setSelectedImage] = useState<ImageData | null>(null);
+  const [selectedFile, setSelectedFile] = useState<AttachmentData | null>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const isLight = theme === 'light';
@@ -38,10 +38,10 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    if (!input.trim() && !selectedImage) return;
-    onSendMessage(input, selectedImage || undefined);
+    if (!input.trim() && !selectedFile) return;
+    onSendMessage(input, selectedFile || undefined);
     setInput('');
-    setSelectedImage(null);
+    setSelectedFile(null);
   };
 
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -50,7 +50,11 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({
       const reader = new FileReader();
       reader.onloadend = () => {
         const base64String = (reader.result as string).split(',')[1];
-        setSelectedImage({ data: base64String, mimeType: file.type });
+        setSelectedFile({ 
+          data: base64String, 
+          mimeType: file.type || 'application/octet-stream',
+          name: file.name
+        });
       };
       reader.readAsDataURL(file);
     }
@@ -120,18 +124,26 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({
 
       <div className="p-4 bg-current/5">
         <form onSubmit={handleSubmit} className="flex flex-col gap-2">
-          {selectedImage && (
-            <div className={`flex items-center gap-2 px-3 py-1 text-[8px] font-black uppercase tracking-widest bg-emerald-500 text-white w-fit`}>
-              <CheckCircle2 size={10} /> Image_Attached
-              <button onClick={() => setSelectedImage(null)} className="ml-2"><X size={10} /></button>
+          {selectedFile && (
+            <div className={`flex items-center gap-2 px-3 py-1 text-[8px] font-black uppercase tracking-widest bg-emerald-500 text-white w-fit animate-in slide-in-from-bottom-1`}>
+              {selectedFile.mimeType === 'application/pdf' ? <FileText size={10} /> : <CheckCircle2 size={10} />}
+              {selectedFile.name?.toUpperCase() || 'FILE_ATTACHED'}
+              <button type="button" onClick={() => setSelectedFile(null)} className="ml-2 hover:opacity-50"><X size={10} /></button>
             </div>
           )}
           <div className="flex gap-2">
-            <input type="file" ref={fileInputRef} className="hidden" accept="image/*" onChange={handleFileChange} />
+            <input 
+              type="file" 
+              ref={fileInputRef} 
+              className="hidden" 
+              accept="image/*,application/pdf,text/plain" 
+              onChange={handleFileChange} 
+            />
             <button 
               type="button"
               onClick={() => fileInputRef.current?.click()}
               className={`p-4 border border-black hover:bg-black hover:text-white transition-all`}
+              title="Attach File (Image, PDF, TXT)"
             >
               <ImagePlus size={18} />
             </button>
@@ -139,12 +151,12 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({
               type="text"
               value={input}
               onChange={(e) => setInput(e.target.value)}
-              placeholder="Enter command..."
+              placeholder="Enter command or analysis request..."
               className={`flex-1 border border-black p-4 text-sm focus:outline-none bg-white`}
             />
             <button 
               type="submit"
-              disabled={!input.trim() && !selectedImage}
+              disabled={!input.trim() && !selectedFile}
               className={`p-4 bg-black text-white hover:bg-slate-800 disabled:opacity-20 transition-all`}
             >
               <Send size={18} />
