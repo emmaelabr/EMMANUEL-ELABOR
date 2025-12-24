@@ -1,7 +1,7 @@
 
 import React, { useRef, useEffect, useState } from 'react';
 import { ExperimentState } from '../types';
-import { Play, Pause, RotateCcw, Settings2, ShieldAlert, Zap, Activity } from 'lucide-react';
+import { Play, Pause, RotateCcw, Settings2 } from 'lucide-react';
 import { Theme } from '../App';
 
 interface LabSceneProps {
@@ -25,11 +25,13 @@ const LabScene: React.FC<LabSceneProps> = ({ experiment, onUpdateParameters, onD
 
   const simState = useRef({
     time: 0,
-    bubbles: [] as {x: number, y: number, r: number, s: number, opacity: number}[],
-    colorPhase: 0,
-    particles: [] as any[],
     pendulumTheta: 0.6,
-    pendulumOmega: 0
+    pendulumOmega: 0,
+    v1: 0,
+    v2: 0,
+    y1: 0,
+    y2: 0,
+    phHistory: [] as number[]
   });
 
   useEffect(() => {
@@ -48,52 +50,47 @@ const LabScene: React.FC<LabSceneProps> = ({ experiment, onUpdateParameters, onD
       }
     };
     
-    const resizeObserver = new ResizeObserver(() => resize());
+    // Fix: ResizeObserver loop completed with undelivered notifications
+    // Using requestAnimationFrame to ensure resize happens in the next frame
+    const resizeObserver = new ResizeObserver(() => {
+      requestAnimationFrame(resize);
+    });
+    
     if (canvas.parentElement) resizeObserver.observe(canvas.parentElement);
     resize();
 
-    const drawGlassContainer = (x: number, y: number, w: number, h: number, fluidLevel: number, color: string) => {
-      // Glass walls
-      ctx.strokeStyle = isLight ? 'rgba(0,0,0,0.1)' : 'rgba(255,255,255,0.15)';
-      ctx.lineWidth = 10;
+    const drawHatching = (x: number, y: number, w: number, h: number, angle: number = 45) => {
+      ctx.save();
       ctx.beginPath();
-      ctx.roundRect(x, y, w, h, [0, 0, 30, 30]);
-      ctx.stroke();
-
-      // Fluid
-      if (fluidLevel > 0) {
-        ctx.fillStyle = color;
-        const fh = h * fluidLevel;
+      ctx.rect(x, y, w, h);
+      ctx.clip();
+      ctx.strokeStyle = isLight ? 'rgba(0,0,0,0.1)' : 'rgba(255,255,255,0.1)';
+      ctx.lineWidth = 1;
+      const step = 8;
+      for (let i = -w - h; i < w + h; i += step) {
         ctx.beginPath();
-        ctx.roundRect(x + 5, y + h - fh, w - 10, fh - 5, [0, 0, 25, 25]);
-        ctx.fill();
-        
-        // Surface Tension/Refraction line
-        ctx.strokeStyle = isLight ? 'rgba(0,0,0,0.2)' : 'rgba(255,255,255,0.3)';
-        ctx.lineWidth = 2;
-        ctx.beginPath();
-        ctx.moveTo(x + 5, y + h - fh);
-        ctx.bezierTo(x + w/2, y + h - fh - 5, x + w/2, y + h - fh + 5, x + w - 5, y + h - fh);
+        ctx.moveTo(x + i, y);
+        ctx.lineTo(x + i + h, y + h);
         ctx.stroke();
       }
+      ctx.restore();
+    };
 
-      // Highlights for glass look
-      ctx.strokeStyle = 'rgba(255,255,255,0.1)';
-      ctx.lineWidth = 2;
-      ctx.beginPath();
-      ctx.moveTo(x + 20, y + 20);
-      ctx.lineTo(x + 20, y + h - 40);
-      ctx.stroke();
+    const drawAnnotation = (text: string, x: number, y: number, align: CanvasTextAlign = 'left') => {
+      ctx.font = 'bold 9px monospace';
+      ctx.fillStyle = isLight ? '#000' : '#fff';
+      ctx.textAlign = align;
+      ctx.fillText(text.toUpperCase(), x, y);
     };
 
     const render = () => {
       const currentExp = experimentRef.current;
       ctx.clearRect(0, 0, canvas.width, canvas.height);
 
-      // Subgrid for lab precision
-      ctx.strokeStyle = isLight ? 'rgba(0,0,0,0.03)' : 'rgba(59,130,246,0.05)';
+      // Textbook Grid
+      ctx.strokeStyle = isLight ? 'rgba(0,0,0,0.03)' : 'rgba(255,255,255,0.03)';
       ctx.lineWidth = 1;
-      const step = 80;
+      const step = 40;
       for (let x = 0; x < canvas.width; x += step) {
         ctx.beginPath(); ctx.moveTo(x, 0); ctx.lineTo(x, canvas.height); ctx.stroke();
       }
@@ -102,10 +99,10 @@ const LabScene: React.FC<LabSceneProps> = ({ experiment, onUpdateParameters, onD
       }
 
       if (!currentExp) {
-        ctx.fillStyle = isLight ? '#cbd5e1' : '#334155';
-        ctx.font = 'bold 12px tracking-[0.8em]';
+        ctx.fillStyle = isLight ? '#000' : '#475569';
+        ctx.font = '900 10px monospace';
         ctx.textAlign = 'center';
-        ctx.fillText('CORE STANDBY', canvas.width / 2, canvas.height / 2);
+        ctx.fillText('CORE_STANDBY // LAB_READY', canvas.width / 2, canvas.height / 2);
         animationFrameId = requestAnimationFrame(render);
         return;
       }
@@ -113,155 +110,159 @@ const LabScene: React.FC<LabSceneProps> = ({ experiment, onUpdateParameters, onD
       const centerX = canvas.width / 2;
       const centerY = canvas.height / 2;
 
-      // --- SIMULATION RENDERING ---
-      if (currentExp.type === 'chemistry') {
+      // Realistic Physics Rendering
+      if (currentExp.type === 'falling_objects') {
+        const g = currentExp.parameters.gravity || 9.81;
+        const mass1 = currentExp.parameters.mass1 || 3;
+        const mass2 = currentExp.parameters.mass2 || 2;
+        const density = currentExp.parameters.density || 1.225; // kg/m3 (Air default)
+        
+        const dt = 0.016;
         if (isRunning) {
-          simState.current.time += 0.016;
+          simState.current.time += dt;
           setTime(simState.current.time);
-        }
-        
-        const bWidth = 240;
-        const bHeight = 320;
-        const bx = centerX - bWidth / 2;
-        const by = centerY - bHeight / 2;
-        const targetPh = currentExp.parameters.ph || 7;
-        const reactivity = currentExp.parameters.reactivity || 5;
 
-        if (isRunning) simState.current.colorPhase += (targetPh - simState.current.colorPhase) * 0.01;
-        const hue = (simState.current.colorPhase / 14) * 280;
-        
-        drawGlassContainer(bx, by, bWidth, bHeight, 0.7, `hsla(${hue}, 70%, 50%, 0.4)`);
+          // Force = m*g - drag
+          const Cd = 0.47; // Sphere
+          const r1 = Math.pow(mass1, 1/3) * 0.1;
+          const r2 = Math.pow(mass2, 1/3) * 0.1;
+          const area1 = Math.PI * r1 * r1;
+          const area2 = Math.PI * r2 * r2;
 
-        if (isRunning && reactivity > 1) {
-          if (Math.random() < reactivity * 0.1) {
-            simState.current.bubbles.push({
-              x: bx + 40 + Math.random() * (bWidth - 80),
-              y: by + bHeight - 20,
-              r: Math.random() * 4 + 1,
-              s: Math.random() * reactivity * 0.4 + 1,
-              opacity: 0.6
-            });
-          }
-          simState.current.bubbles.forEach((b, idx) => {
-            b.y -= b.s;
-            b.opacity -= 0.004;
-            ctx.fillStyle = isLight ? `rgba(0, 0, 0, ${b.opacity * 0.2})` : `rgba(255, 255, 255, ${b.opacity})`;
-            ctx.beginPath(); ctx.arc(b.x, b.y, b.r, 0, Math.PI * 2); ctx.fill();
-            if (b.y < by + 100) simState.current.bubbles.splice(idx, 1);
-          });
-        }
-        
-        if (isRunning) onDataUpdate({ x: simState.current.time, y: simState.current.colorPhase });
-      }
+          const drag1 = 0.5 * density * simState.current.v1 * simState.current.v1 * Cd * area1;
+          const drag2 = 0.5 * density * simState.current.v2 * simState.current.v2 * Cd * area2;
 
-      else if (currentExp.type === 'electronics') {
-        if (isRunning) {
-          simState.current.time += 0.016;
-          setTime(simState.current.time);
-        }
-        const voltage = currentExp.parameters.voltage || 12;
-        const resistance = currentExp.parameters.resistance || 50;
-        const current = voltage / resistance;
-        const circW = 550;
-        const circH = 350;
-        const cx = centerX - circW/2;
-        const cy = centerY - circH/2;
+          const a1 = g - (drag1 / mass1);
+          const a2 = g - (drag2 / mass2);
 
-        ctx.strokeStyle = isLight ? 'rgba(0,0,0,0.8)' : '#1e293b';
-        ctx.lineWidth = 14;
-        ctx.beginPath(); ctx.roundRect(cx, cy, circW, circH, 60); ctx.stroke();
-
-        if (isRunning && current > 0) {
-          const speed = current * 200;
-          const electronCount = 20;
-          ctx.fillStyle = isLight ? '#2563eb' : '#3b82f6';
-          for(let i=0; i<electronCount; i++) {
-             const t = (simState.current.time * speed + i * (1000/electronCount)) % 1000;
-             let ex = cx, ey = cy;
-             // Simple loop around rect path
-             if (t < 250) { ex = cx + (t/250)*circW; ey = cy; }
-             else if (t < 500) { ex = cx + circW; ey = cy + ((t-250)/250)*circH; }
-             else if (t < 750) { ex = cx + circW - ((t-500)/250)*circW; ey = cy + circH; }
-             else { ex = cx; ey = cy + circH - ((t-750)/250)*circH; }
-             
-             ctx.shadowBlur = 10; ctx.shadowColor = ctx.fillStyle as string;
-             ctx.beginPath(); ctx.arc(ex, ey, 5, 0, Math.PI * 2); ctx.fill();
-             ctx.shadowBlur = 0;
-          }
+          simState.current.v1 += a1 * dt;
+          simState.current.v2 += a2 * dt;
+          
+          const groundY = canvas.height - 100;
+          simState.current.y1 = Math.min(groundY, simState.current.y1 + simState.current.v1 * 5); 
+          simState.current.y2 = Math.min(groundY, simState.current.y2 + simState.current.v2 * 5);
         }
 
-        const bulbX = cx + circW/2;
-        const bulbY = cy;
-        const intensity = Math.min(1.5, current * 12);
-        
-        if (isRunning && intensity > 0.05) {
-          const radial = ctx.createRadialGradient(bulbX, bulbY, 0, bulbX, bulbY, 200 * intensity);
-          radial.addColorStop(0, `rgba(251, 191, 36, ${0.5 * intensity})`);
-          radial.addColorStop(1, 'transparent');
-          ctx.fillStyle = radial; ctx.fillRect(bulbX - 300, bulbY - 300, 600, 600);
-        }
-        ctx.fillStyle = isRunning && intensity > 0.05 ? `rgba(253, 224, 71, ${0.7 + intensity/3})` : (isLight ? '#f1f5f9' : '#0f172a');
-        ctx.beginPath(); ctx.arc(bulbX, bulbY, 50, 0, Math.PI * 2); ctx.fill();
-        ctx.strokeStyle = isLight ? '#000' : '#fff'; ctx.lineWidth = 4; ctx.stroke();
-
-        if (isRunning) onDataUpdate({ x: simState.current.time, y: current });
-      }
-
-      else {
-        // Physics / Pendulum
-        const bWidth = 300;
-        const bHeight = 400;
-        const bx = centerX - bWidth/2;
-        const by = centerY - bHeight/2;
-        
-        // Fluid Properties
-        const viscosity = currentExp.parameters.viscosity || 0.1; // 0.1 to 10
-        const density = currentExp.parameters.density || 1; // 1 to 20
-        const isInFluid = viscosity > 0.5 || density > 1;
-
+        // Draw Liquid Tank if in fluid
+        const isInFluid = density > 200; 
         if (isInFluid) {
-          const fluidHue = 200 + density; 
-          drawGlassContainer(bx, by, bWidth, bHeight, 0.85, `hsla(${fluidHue}, 60%, 40%, 0.3)`);
+          ctx.strokeStyle = isLight ? '#000' : '#fff';
+          ctx.lineWidth = 2;
+          ctx.strokeRect(centerX - 150, 100, 300, canvas.height - 200);
+          ctx.fillStyle = isLight ? 'rgba(0,100,255,0.05)' : 'rgba(0,100,255,0.2)';
+          ctx.fillRect(centerX - 150, 100, 300, canvas.height - 200);
+          drawAnnotation('Fluid Medium (ρ=' + density.toFixed(1) + ')', centerX - 140, 120);
         }
 
+        // Ground Hatching
+        drawHatching(centerX - 250, canvas.height - 100, 500, 40);
+        ctx.beginPath(); ctx.moveTo(centerX - 250, canvas.height - 100); ctx.lineTo(centerX + 250, canvas.height - 100); ctx.stroke();
+
+        // Draw balls
+        const drawBall = (x: number, y: number, m: number, color: string, label: string) => {
+          const r = Math.pow(m, 1/3) * 12;
+          ctx.strokeStyle = isLight ? '#000' : '#fff';
+          ctx.lineWidth = 1.5;
+          ctx.fillStyle = color;
+          ctx.beginPath(); ctx.arc(x, y, r, 0, Math.PI * 2); ctx.fill(); ctx.stroke();
+          
+          if (isRunning) {
+            ctx.setLineDash([2, 2]);
+            ctx.beginPath(); ctx.moveTo(x, y + r); ctx.lineTo(x, y + r + 20); ctx.stroke();
+            ctx.setLineDash([]);
+          }
+          drawAnnotation(`m=${m.toFixed(1)}g`, x + r + 5, y, 'left');
+          drawAnnotation(label, x - r - 5, y, 'right');
+        };
+
+        drawBall(centerX - 60, 120 + simState.current.y1, mass1, isLight ? 'rgba(0,0,0,0.1)' : 'rgba(59,130,246,0.3)', 'Obj_A');
+        drawBall(centerX + 60, 120 + simState.current.y2, mass2, isLight ? 'rgba(0,0,0,0.1)' : 'rgba(245,158,11,0.3)', 'Obj_B');
+
+        if (isRunning) onDataUpdate({ x: simState.current.time, y: canvas.height - simState.current.y1 });
+      }
+
+      else if (currentExp.type === 'physics') {
+        const L = currentExp.parameters.length || 10;
+        const g = currentExp.parameters.gravity || 9.81;
+        const viscosity = currentExp.parameters.viscosity || 0.1;
+        const dt = 0.016;
+
         if (isRunning) {
-          const L = (currentExp.parameters.length || 10);
-          const g = currentExp.parameters.gravity || 9.81;
-          const dt = 0.016;
-          
-          // Drag force equation: Fd = -b * v (Simplified)
-          const damping = 0.05 * viscosity * density;
+          const damping = 0.05 * viscosity; 
           const alpha = -(g / L) * Math.sin(simState.current.pendulumTheta) - damping * simState.current.pendulumOmega;
-          
           simState.current.pendulumOmega += alpha * dt;
           simState.current.pendulumTheta += simState.current.pendulumOmega * dt;
           simState.current.time += dt;
           setTime(simState.current.time);
         }
 
-        const rodL = (currentExp.parameters.length || 10) * 15;
-        const startX = centerX;
-        const startY = by + 40;
-        const endX = startX + rodL * Math.sin(simState.current.pendulumTheta);
-        const endY = startY + rodL * Math.cos(simState.current.pendulumTheta);
+        const px = centerX, py = centerY - 150;
+        const rodL = 250;
+        const bx = px + rodL * Math.sin(simState.current.pendulumTheta);
+        const by = py + rodL * Math.cos(simState.current.pendulumTheta);
 
-        ctx.strokeStyle = isLight ? '#334155' : '#475569';
-        ctx.lineWidth = 4;
-        ctx.beginPath(); ctx.moveTo(startX, startY); ctx.lineTo(endX, endY); ctx.stroke();
+        const inFluid = viscosity > 0.5;
+        if (inFluid) {
+          const fluidY = centerY;
+          ctx.fillStyle = isLight ? 'rgba(0,0,0,0.05)' : 'rgba(255,255,255,0.05)';
+          ctx.fillRect(centerX - 200, fluidY, 400, canvas.height - fluidY);
+          ctx.strokeStyle = isLight ? '#000' : '#fff';
+          ctx.beginPath(); ctx.moveTo(centerX - 200, fluidY); ctx.lineTo(centerX + 200, fluidY); ctx.stroke();
+          drawAnnotation('Liquid Phase (η=' + viscosity.toFixed(2) + ')', centerX - 190, fluidY + 15);
+        }
+
+        drawHatching(centerX - 40, py - 10, 80, 10);
+        ctx.beginPath(); ctx.moveTo(centerX - 40, py); ctx.lineTo(centerX + 40, py); ctx.stroke();
+
+        ctx.strokeStyle = isLight ? '#000' : '#fff';
+        ctx.lineWidth = 1;
+        ctx.beginPath(); ctx.moveTo(px, py); ctx.lineTo(bx, by); ctx.stroke();
+        ctx.fillStyle = isLight ? '#fff' : '#000';
+        ctx.beginPath(); ctx.arc(bx, by, 18, 0, Math.PI * 2); ctx.fill(); ctx.stroke();
         
-        // Pivot point
-        ctx.fillStyle = isLight ? '#000' : '#fff';
-        ctx.beginPath(); ctx.arc(startX, startY, 6, 0, Math.PI * 2); ctx.fill();
-
-        const bobGrad = ctx.createRadialGradient(endX - 8, endY - 8, 0, endX, endY, 35);
-        bobGrad.addColorStop(0, isLight ? '#cbd5e1' : '#60a5fa');
-        bobGrad.addColorStop(1, isLight ? '#1e293b' : '#1d4ed8');
-        ctx.fillStyle = bobGrad;
-        ctx.shadowBlur = 40; ctx.shadowColor = isLight ? 'rgba(0,0,0,0.2)' : 'rgba(59,130,246,0.6)';
-        ctx.beginPath(); ctx.arc(endX, endY, 35, 0, Math.PI * 2); ctx.fill();
-        ctx.shadowBlur = 0;
+        ctx.setLineDash([5, 5]);
+        ctx.beginPath(); ctx.moveTo(px, py); ctx.lineTo(px, py + rodL + 20); ctx.stroke();
+        ctx.setLineDash([]);
+        
+        drawAnnotation('θ = ' + (simState.current.pendulumTheta * 180 / Math.PI).toFixed(1) + '°', bx + 25, by);
 
         if (isRunning) onDataUpdate({ x: simState.current.time, y: simState.current.pendulumTheta });
+      }
+
+      else if (currentExp.type === 'chemistry') {
+        const ph = currentExp.parameters.ph || 7;
+        const temp = currentExp.parameters.temperature || 25;
+        if (isRunning) {
+          simState.current.time += 0.016;
+          setTime(simState.current.time);
+        }
+
+        const bw = 140, bh = 180;
+        const bx = centerX - bw/2, by = centerY - bh/2;
+        
+        ctx.strokeStyle = isLight ? '#000' : '#fff';
+        ctx.lineWidth = 2;
+        ctx.beginPath();
+        ctx.moveTo(bx, by);
+        ctx.lineTo(bx, by + bh);
+        ctx.lineTo(bx + bw, by + bh);
+        ctx.lineTo(bx + bw, by);
+        ctx.stroke();
+
+        for(let i=1; i<=5; i++) {
+          ctx.beginPath();
+          ctx.moveTo(bx, by + bh - i * 30);
+          ctx.lineTo(bx + 15, by + bh - i * 30);
+          ctx.stroke();
+          drawAnnotation((i * 50) + 'ml', bx + 18, by + bh - i * 30 + 3);
+        }
+
+        const hue = (ph / 14) * 280;
+        ctx.fillStyle = `hsla(${hue}, 60%, 50%, 0.2)`;
+        ctx.fillRect(bx + 2, by + 40, bw - 4, bh - 42);
+
+        drawAnnotation('Beaker // pH: ' + ph.toFixed(1), bx, by - 15);
+        drawAnnotation('Temp: ' + temp.toFixed(1) + '°C', bx, by - 5);
       }
 
       animationFrameId = requestAnimationFrame(render);
@@ -274,85 +275,93 @@ const LabScene: React.FC<LabSceneProps> = ({ experiment, onUpdateParameters, onD
     };
   }, [isRunning, theme, experiment?.id]);
 
+  const getParamRange = (name: string) => {
+    const n = name.toLowerCase();
+    if (n.includes('gravity')) return { min: 0, max: 20, step: 0.1 };
+    if (n.includes('viscosity')) return { min: 0, max: 5, step: 0.01 };
+    if (n.includes('density')) return { min: 0, max: 2000, step: 1 };
+    if (n.includes('mass')) return { min: 0.1, max: 10, step: 0.1 };
+    if (n.includes('length')) return { min: 1, max: 50, step: 0.5 };
+    if (n.includes('ph')) return { min: 0, max: 14, step: 0.1 };
+    if (n.includes('temperature')) return { min: -50, max: 100, step: 1 };
+    return { min: 0, max: 100, step: 1 };
+  };
+
   return (
-    <div className={`flex-1 relative overflow-hidden p-4`}>
-      <div className={`w-full h-full rounded-[3.5rem] border shadow-[0_30px_60px_-15px_rgba(0,0,0,0.3)] overflow-hidden relative transition-all duration-700 ${isLight ? 'bg-white/40 border-black/5' : 'bg-slate-900/40 border-white/5 backdrop-blur-md'}`}>
-        <canvas ref={canvasRef} className="w-full h-full block" />
-        
-        {/* Telemetry HUD */}
-        <div className={`absolute bottom-8 left-8 p-6 rounded-3xl border shadow-2xl transition-all duration-500 backdrop-blur-3xl ${isLight ? 'bg-white/90 border-black/5' : 'bg-slate-950/70 border-white/5'}`}>
-          <div className="flex items-center gap-3 mb-4">
-            <Activity size={14} className="text-blue-500 animate-pulse" />
-            <span className="text-[10px] font-black uppercase tracking-[0.3em] text-slate-500">Neural Sync Feed</span>
-          </div>
-          <div className="flex items-center gap-6">
-            <div className={`w-28 h-14 rounded-xl flex items-center justify-center border shadow-inner ${isLight ? 'bg-slate-50 border-black/5' : 'bg-black/40 border-white/5'}`}>
-               <Zap size={20} className="text-blue-500" />
-            </div>
-            <div className="flex flex-col gap-1.5">
-              <span className={`text-xs font-mono font-bold ${isLight ? 'text-slate-900' : 'text-white'}`}>T: {time.toFixed(3)}s</span>
-              <span className={`text-[10px] font-mono font-black text-blue-500`}>CORE_SYNC: OK</span>
-            </div>
-          </div>
-        </div>
-
-        {/* Floating Controls */}
-        <div className={`absolute top-8 left-1/2 -translate-x-1/2 flex items-center gap-6 px-8 py-4 border rounded-[2.5rem] shadow-2xl z-40 transition-all ${isLight ? 'bg-black border-black text-white' : 'bg-slate-900/90 border-white/10 backdrop-blur-3xl'}`}>
-          <div className="flex items-center gap-3">
-             <button 
-               onClick={() => setIsRunning(!isRunning)}
-               className={`w-12 h-12 rounded-2xl flex items-center justify-center transition-all ${isRunning ? 'text-red-500 bg-red-500/10' : 'text-emerald-500 bg-emerald-500/10 hover:scale-110 shadow-lg'}`}
-             >
-               {isRunning ? <Pause size={20} /> : <Play size={20} />}
-             </button>
-             <button onClick={() => { setIsRunning(false); setTime(0); simState.current.time = 0; simState.current.pendulumTheta = 0.6; simState.current.pendulumOmega = 0; }} className={`w-12 h-12 rounded-2xl flex items-center justify-center transition-all ${isLight ? 'text-white/40 hover:text-white hover:bg-white/10' : 'text-slate-500 hover:text-white hover:bg-white/5'}`}>
-               <RotateCcw size={20} />
-             </button>
-          </div>
-          
-          <div className={`w-[1px] h-8 ${isLight ? 'bg-white/10' : 'bg-white/5'}`} />
-          
-          <div className="flex flex-col min-w-[80px]">
-            <span className="text-[8px] font-black text-blue-500 uppercase tracking-[0.2em] mb-1">Clock</span>
-            <span className={`font-mono font-bold text-lg`}>{time.toFixed(3)}<span className="text-[10px] ml-1 opacity-50">s</span></span>
-          </div>
-
-          <button 
-            onClick={() => setShowSettings(!showSettings)}
-            className={`w-12 h-12 rounded-2xl flex items-center justify-center transition-all ${showSettings ? 'text-blue-500 bg-blue-500/10' : (isLight ? 'text-white/40 hover:text-white' : 'text-slate-500 hover:text-white')}`}
-          >
-            <Settings2 size={20} />
-          </button>
-        </div>
-
-        {showSettings && experiment && (
-          <div className={`absolute top-32 right-8 p-8 rounded-[2.5rem] border w-80 z-40 shadow-2xl animate-in fade-in slide-in-from-right-8 backdrop-blur-3xl ${isLight ? 'bg-white/95 border-black/5' : 'bg-slate-900/95 border-white/10'}`}>
-            <div className="flex items-center justify-between mb-8">
-              <h3 className="text-[10px] font-black text-blue-500 uppercase tracking-[0.3em]">Neural Calibration</h3>
-              <ShieldAlert size={14} className="text-slate-400" />
-            </div>
-            <div className="space-y-8">
-              {Object.entries(experiment.parameters).map(([key, val]) => {
-                const value = val as number;
-                return (
-                  <div key={key}>
-                    <div className="flex justify-between text-[10px] uppercase tracking-[0.2em] font-black mb-3">
-                      <span className={isLight ? 'text-slate-500' : 'text-slate-400'}>{key}</span>
-                      <span className={`font-mono font-bold ${isLight ? 'text-slate-900' : 'text-white'}`}>{value.toFixed(2)}</span>
-                    </div>
-                    <input 
-                      type="range" min={0.1} max={50} step={0.1}
-                      value={value}
-                      onChange={(e) => onUpdateParameters({ [key]: parseFloat(e.target.value) })}
-                      className="w-full h-1.5 bg-blue-500/10 rounded-lg appearance-none cursor-pointer accent-blue-600"
-                    />
-                  </div>
-                );
-              })}
-            </div>
-          </div>
-        )}
+    <div className={`flex-1 relative overflow-hidden flex flex-col`}>
+      <canvas ref={canvasRef} className="flex-1 block" />
+      
+      <div className={`absolute top-6 left-1/2 -translate-x-1/2 flex items-center gap-4 px-6 py-3 border transition-all ${isLight ? 'bg-white border-black shadow-[4px_4px_0_0_#000]' : 'bg-slate-900 border-white/20'}`}>
+         <button 
+           onClick={() => setIsRunning(!isRunning)}
+           className={`p-2 transition-all ${isLight ? 'hover:bg-black hover:text-white' : 'hover:bg-white hover:text-black'}`}
+         >
+           {isRunning ? <Pause size={18} /> : <Play size={18} />}
+         </button>
+         <button 
+           onClick={() => { 
+             setIsRunning(false); 
+             setTime(0); 
+             simState.current.time = 0; 
+             simState.current.pendulumTheta = 0.6; 
+             simState.current.pendulumOmega = 0;
+             simState.current.v1 = 0;
+             simState.current.v2 = 0;
+             simState.current.y1 = 0;
+             simState.current.y2 = 0;
+           }}
+           className={`p-2 transition-all ${isLight ? 'hover:bg-black hover:text-white' : 'hover:bg-white hover:text-black'}`}
+         >
+           <RotateCcw size={18} />
+         </button>
+         <div className={`w-[1px] h-6 ${isLight ? 'bg-black' : 'bg-white/20'}`} />
+         <span className="font-mono text-[10px] font-black uppercase tracking-widest whitespace-nowrap">
+           T_ELAPSED: {time.toFixed(3)}s
+         </span>
+         <button 
+           onClick={() => setShowSettings(!showSettings)}
+           className={`p-2 transition-all ${isLight ? 'hover:bg-black hover:text-white' : 'hover:bg-white hover:text-black'} ${showSettings && (isLight ? 'bg-black text-white' : 'bg-white text-black')}`}
+         >
+           <Settings2 size={18} />
+         </button>
       </div>
+
+      {showSettings && experiment && (
+        <div className={`absolute top-24 right-6 p-6 border w-72 animate-in fade-in slide-in-from-right-4 transition-all z-50 ${isLight ? 'bg-white border-black shadow-[8px_8px_0_0_#000]' : 'bg-slate-900 border-white/20'}`}>
+          <div className="flex items-center justify-between mb-6">
+            <h3 className="text-[10px] font-black uppercase tracking-widest">Calibration_Matrix</h3>
+            <button onClick={() => setShowSettings(false)} className="opacity-50 hover:opacity-100 transition-opacity">
+              <span className="text-[10px] font-black">CLOSE [X]</span>
+            </button>
+          </div>
+          <div className="space-y-8 max-h-[60vh] overflow-y-auto pr-2 custom-scrollbar">
+            {Object.entries(experiment.parameters).map(([key, val]) => {
+              const range = getParamRange(key);
+              return (
+                <div key={key} className="space-y-3">
+                  <div className="flex justify-between text-[9px] uppercase tracking-widest font-black opacity-80">
+                    <span className="truncate max-w-[150px]">{key}</span>
+                    <span className="font-mono">{(val as number).toFixed(2)}</span>
+                  </div>
+                  <input 
+                    type="range" 
+                    min={range.min} 
+                    max={range.max} 
+                    step={range.step}
+                    value={val}
+                    onChange={(e) => onUpdateParameters({ [key]: parseFloat(e.target.value) })}
+                    className="w-full h-1.5 bg-current/20 appearance-none cursor-pointer accent-current rounded-full"
+                  />
+                  <div className="flex justify-between text-[7px] font-black opacity-40">
+                    <span>MIN {range.min}</span>
+                    <span>MAX {range.max}</span>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      )}
     </div>
   );
 };

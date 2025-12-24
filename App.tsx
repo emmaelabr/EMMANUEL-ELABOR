@@ -17,7 +17,8 @@ export type Theme = 'light' | 'dark';
 const App: React.FC = () => {
   const [view, setView] = useState<ViewState>('welcome');
   const [layoutMode, setLayoutMode] = useState<LayoutMode>('split');
-  const [theme, setTheme] = useState<Theme>('dark');
+  // Default to light for the professional Black & White look
+  const [theme, setTheme] = useState<Theme>('light');
   const [experiment, setExperiment] = useState<ExperimentState | null>(null);
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [sources, setSources] = useState<GroundingSource[]>([]);
@@ -28,7 +29,7 @@ const App: React.FC = () => {
 
   useEffect(() => {
     document.body.style.backgroundColor = isLight ? '#ffffff' : '#020617';
-    document.body.style.color = isLight ? '#0f172a' : '#f8fafc';
+    document.body.style.color = isLight ? '#000000' : '#f8fafc';
   }, [theme]);
 
   const toggleTheme = () => setTheme(prev => prev === 'light' ? 'dark' : 'light');
@@ -57,8 +58,9 @@ const App: React.FC = () => {
         ...prev,
         { 
           role: 'model', 
-          text: `${result.description}\n\nRevolt core initialized. Analysis standing by.`,
-          showGraph: prompt.toLowerCase().includes('graph') || prompt.toLowerCase().includes('plot')
+          text: `${result.description}\n\nRevolt core initialized. Simulation standing by.`,
+          showGraph: prompt.toLowerCase().includes('graph') || prompt.toLowerCase().includes('plot'),
+          sources: result.sources
         }
       ]);
       setTimeout(() => setView('lab'), 2000);
@@ -73,9 +75,10 @@ const App: React.FC = () => {
     setMessages(prev => [...prev, { role: 'user', text: text || (image ? "[Image Attached]" : "") }]);
     setIsTyping(true);
     try {
-      const reply = await chatWithLabAssistant([], text, image);
+      const { text: reply, sources: newSources } = await chatWithLabAssistant([], text, image);
       const showGraph = text.toLowerCase().includes('graph') || text.toLowerCase().includes('plot');
-      setMessages(prev => [...prev, { role: 'model', text: reply, showGraph }]);
+      setMessages(prev => [...prev, { role: 'model', text: reply, showGraph, sources: newSources }]);
+      setSources(newSources);
     } catch (error) {
       setMessages(prev => [...prev, { role: 'model', text: 'Communication error.' }]);
     } finally {
@@ -101,7 +104,7 @@ const App: React.FC = () => {
   }, []);
 
   return (
-    <div className={`h-screen w-full transition-colors duration-700 overflow-hidden font-sans relative ${isLight ? 'bg-white text-slate-900' : 'bg-[#020617] text-slate-200'}`}>
+    <div className={`h-screen w-full transition-colors duration-700 overflow-hidden font-sans relative ${isLight ? 'bg-white text-black' : 'bg-[#020617] text-slate-200'}`}>
       <GlobalParticles theme={theme} />
       
       {view === 'welcome' && (
@@ -111,7 +114,7 @@ const App: React.FC = () => {
       {view === 'loading' && <NeutronStarLoading />}
 
       {view === 'lab' && (
-        <div className="flex h-screen w-full animate-in zoom-in-95 duration-1000 relative z-10 backdrop-blur-[2px]">
+        <div className="flex h-screen w-full animate-in duration-700 relative z-10">
           <Sidebar 
             isOpen={isSidebarOpen}
             onToggle={() => setIsSidebarOpen(!isSidebarOpen)}
@@ -120,49 +123,44 @@ const App: React.FC = () => {
             theme={theme}
           />
           
-          <main className="flex-1 flex flex-col overflow-hidden">
-            <header className={`h-20 flex items-center justify-between px-10 z-30 transition-all duration-700 ${isLight ? 'bg-white/40 border-b border-black/5' : 'bg-transparent'}`}>
+          <main className="flex-1 flex flex-col overflow-hidden relative">
+            <header className={`h-16 flex items-center justify-between px-8 z-30 transition-all duration-700 ${isLight ? 'bg-white border-b border-black' : 'bg-transparent border-b border-white/10'}`}>
               <div className="flex items-center gap-6">
                 <button 
                   onClick={() => setView('welcome')}
-                  className={`p-3 rounded-2xl transition-all shadow-xl ${isLight ? 'bg-black text-white hover:bg-slate-800' : 'bg-white/5 hover:bg-white/10 text-slate-400'}`}
+                  className={`p-2 rounded-lg transition-all ${isLight ? 'bg-black text-white hover:bg-slate-800' : 'bg-white/5 hover:bg-white/10 text-slate-400'}`}
                 >
-                  <ArrowLeft size={20} />
+                  <ArrowLeft size={16} />
                 </button>
-                <div className="flex flex-col">
-                  <span className={`text-[10px] font-black uppercase tracking-[0.3em] leading-none mb-2 ${isLight ? 'text-slate-400' : 'text-blue-500/60'}`}>Research Stream</span>
-                  <h2 className={`text-xl font-extralight tracking-tight ${isLight ? 'text-slate-900' : 'text-white'}`}>
-                    {experiment?.name.split(' ').map((word, i) => i === 0 ? <span key={i} className="font-bold italic mr-1">{word}</span> : word + ' ')}
+                <div className="flex items-baseline gap-3">
+                  <span className={`text-[10px] font-black uppercase tracking-[0.2em] ${isLight ? 'text-slate-400' : 'text-blue-500/60'}`}>Experiment No. {experiment?.id.slice(-4)}</span>
+                  <h2 className={`text-sm font-black uppercase tracking-widest ${isLight ? 'text-black' : 'text-white'}`}>
+                    {experiment?.name}
                   </h2>
                 </div>
               </div>
 
-              <div className="flex items-center gap-8">
+              <div className="flex items-center gap-6">
                 <button 
                   onClick={() => setLayoutMode(layoutMode === 'split' ? 'chat-only' : 'split')}
-                  className={`px-6 py-2 rounded-2xl border text-[10px] font-black transition-all uppercase tracking-[0.2em] shadow-lg ${isLight ? 'bg-black border-black text-white hover:bg-slate-800' : 'bg-white/5 border-white/10 text-slate-400 hover:text-white'}`}
+                  className={`px-4 py-1.5 rounded-md border text-[9px] font-black transition-all uppercase tracking-[0.2em] ${isLight ? 'bg-white border-black text-black hover:bg-black hover:text-white' : 'bg-white/5 border-white/10 text-slate-400 hover:text-white'}`}
                 >
-                  {layoutMode === 'split' ? 'Deep View' : 'Split Feed'}
+                  {layoutMode === 'split' ? 'Maximize' : 'Split View'}
                 </button>
 
                 <button 
                   onClick={toggleTheme}
-                  className="group flex items-center gap-4 py-2.5 px-6 rounded-full border border-current/10 bg-current/5 backdrop-blur-md transition-all hover:bg-current/10 hover:scale-105 active:scale-95 shadow-xl outline-none"
+                  className="flex items-center gap-2 group cursor-pointer outline-none"
                 >
-                  <div className={`transition-all duration-700 ease-in-out transform flex items-center gap-3 ${isLight ? 'flex-row' : 'flex-row-reverse'}`}>
-                    <div className={`w-3 h-3 rounded-full transition-all duration-500 ${isLight ? 'bg-black shadow-[0_0_8px_rgba(0,0,0,0.2)]' : 'bg-blue-500 shadow-[0_0_12px_rgba(59,130,246,0.8)] animate-pulse'}`} />
-                    <div className="flex flex-col items-start leading-none pointer-events-none">
-                      <div className="flex items-center gap-0.5">
-                        <span className={`text-sm font-black tracking-tighter transition-colors ${isLight ? 'text-black' : 'text-white'}`}>REVOLT</span>
-                        <span className={`text-sm font-black tracking-tighter transition-colors ${isLight ? 'text-slate-400' : 'text-blue-500/80'}`}>LAB</span>
-                      </div>
-                    </div>
-                  </div>
+                   <div className={`w-8 h-4 rounded-full p-0.5 border transition-all ${isLight ? 'border-black bg-white' : 'border-white/20 bg-black'}`}>
+                      <div className={`w-2.5 h-2.5 rounded-full transition-all duration-500 ${isLight ? 'bg-black translate-x-0' : 'bg-white translate-x-4'}`} />
+                   </div>
+                   <span className="text-[9px] font-black uppercase tracking-widest">Toggle Phase</span>
                 </button>
               </div>
             </header>
 
-            <div className="flex flex-1 overflow-hidden p-6 gap-6">
+            <div className="flex flex-1 overflow-hidden">
               <ChatInterface 
                 messages={messages} 
                 onSendMessage={handleChat} 
@@ -173,12 +171,14 @@ const App: React.FC = () => {
                 theme={theme}
               />
               {layoutMode === 'split' && (
-                <LabScene 
-                  experiment={experiment} 
-                  onUpdateParameters={handleUpdateParameters}
-                  onDataUpdate={handleDataUpdate}
-                  theme={theme}
-                />
+                <div className="flex-1 flex flex-col border-l border-current/10">
+                  <LabScene 
+                    experiment={experiment} 
+                    onUpdateParameters={handleUpdateParameters}
+                    onDataUpdate={handleDataUpdate}
+                    theme={theme}
+                  />
+                </div>
               )}
             </div>
           </main>

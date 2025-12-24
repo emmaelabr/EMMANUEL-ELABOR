@@ -28,6 +28,7 @@ export interface ChatMessage {
   text: string;
   isAction?: boolean;
   showGraph?: boolean;
+  sources?: GroundingSource[];
 }
 
 export interface GroundingSource {
